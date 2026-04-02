@@ -10,7 +10,7 @@
         .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; }
         .balance-amount { font-size: 2.5rem; color: #00d4ff; font-weight: bold; }
         .navbar { background: rgba(0,0,0,0.3) !important; }
-        .chat-box { height: 200px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; }
+        .spinner-border-sm { width: 1rem; height: 1rem; } .chat-box { height: 200px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; }
         .msg-user { color: #00d4ff; }
         .msg-ai { color: #aaa; }
     </style>
@@ -115,7 +115,7 @@
 
         appendMessage('You', message, 'msg-user');
         input.value = '';
-        appendMessage('AI', 'Thinking...', 'msg-ai');
+        appendMessage('AI', '<span class="spinner-border spinner-border-sm text-info me-2" role="status"></span>Thinking...', 'msg-ai');
 
         fetch(`/api/ai/chat/${username}`, {
             method: 'POST',

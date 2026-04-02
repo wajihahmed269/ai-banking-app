@@ -10,6 +10,7 @@
         .card { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
         .card-title { color: #00d4ff; }
         label { color: #ccc; }
+        .input-error { border-color: #dc3545 !important; }
     </style>
 </head>
 <body>
@@ -20,6 +21,7 @@
                 <div class="card-body">
                     <h3 class="card-title text-center mb-4">💳 WajihBank</h3>
                     <div id="errorMsg" class="alert alert-danger d-none"></div>
+                    <div id="successMsg" class="alert alert-success d-none"></div>
                     <div class="mb-3">
                         <label>Username</label>
                         <input type="text" id="username" class="form-control bg-dark text-white border-secondary" placeholder="Enter username">
@@ -37,36 +39,68 @@
     </div>
 </div>
 <script>
+    function validate() {
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value.trim();
+        const uField = document.getElementById('username');
+        const pField = document.getElementById('password');
+        hideMessages();
+        uField.classList.remove('input-error');
+        pField.classList.remove('input-error');
+
+        if (!username) {
+            uField.classList.add('input-error');
+            showError('Username cannot be empty');
+            return null;
+        }
+        if (username.length < 3) {
+            uField.classList.add('input-error');
+            showError('Username must be at least 3 characters');
+            return null;
+        }
+        if (!password) {
+            pField.classList.add('input-error');
+            showError('Password cannot be empty');
+            return null;
+        }
+        if (password.length < 4) {
+            pField.classList.add('input-error');
+            showError('Password must be at least 4 characters');
+            return null;
+        }
+        return { username, password };
+    }
+
     function login() {
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
+        const data = validate();
+        if (!data) return;
         fetch('/api/auth/login', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username, password})
-        }).then(r => r.json()).then(data => {
-            if (data.success) {
-                localStorage.setItem('username', username);
+            body: JSON.stringify(data)
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                localStorage.setItem('username', data.username);
                 window.location.href = '/dashboard';
             } else {
-                showError(data.message || 'Invalid credentials');
+                showError(res.message || 'Invalid credentials');
             }
         }).catch(() => showError('Something went wrong'));
     }
 
     function register() {
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
+        const data = validate();
+        if (!data) return;
         fetch('/api/auth/register', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username, password})
-        }).then(r => r.json()).then(data => {
-            if (data.success) {
-                localStorage.setItem('username', username);
+            body: JSON.stringify(data)
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                localStorage.setItem('username', data.username);
                 window.location.href = '/dashboard';
             } else {
-                showError(data.message || 'Registration failed');
+                showError(res.message || 'Registration failed');
             }
         }).catch(() => showError('Something went wrong'));
     }
@@ -75,6 +109,11 @@
         const el = document.getElementById('errorMsg');
         el.textContent = msg;
         el.classList.remove('d-none');
+    }
+
+    function hideMessages() {
+        document.getElementById('errorMsg').classList.add('d-none');
+        document.getElementById('successMsg').classList.add('d-none');
     }
 </script>
 </body>

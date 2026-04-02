@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-banking
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: bankingdb
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  banking-app:
+    build: .
+    container_name: banking-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bankingdb
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root123
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+networks:
+  default:
+    name: banking-network
+
+volumes:
+  mysql-data:

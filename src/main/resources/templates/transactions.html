@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transactions - WajihBank</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; color: white; }
+        .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; }
+        .navbar { background: rgba(0,0,0,0.3) !important; }
+        table { color: white; }
+        .badge-deposit { background: #198754; }
+        .badge-withdrawal { background: #dc3545; }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-dark px-4 py-3">
+    <span class="navbar-brand fw-bold">💳 WajihBank</span>
+    <div class="d-flex gap-3">
+        <a href="/dashboard" class="btn btn-outline-info btn-sm">Dashboard</a>
+        <button onclick="logout()" class="btn btn-outline-danger btn-sm">Logout</button>
+    </div>
+</nav>
+
+<div class="container mt-5">
+    <div class="glass p-4">
+        <h4 class="text-info mb-4">Transaction History</h4>
+        <div class="table-responsive">
+            <table class="table table-dark table-hover">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Date & Time</th>
+                    </tr>
+                </thead>
+                <tbody id="txTableBody">
+                    <tr><td colspan="4" class="text-center text-secondary">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const username = localStorage.getItem('username');
+    if (!username) window.location.href = '/';
+
+    fetch(`/api/transactions/${username}`)
+        .then(r => r.json())
+        .then(transactions => {
+            const tbody = document.getElementById('txTableBody');
+            if (transactions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary">No transactions yet</td></tr>';
+                return;
+            }
+            tbody.innerHTML = transactions.map((tx, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td><span class="badge badge-${tx.type.toLowerCase()}">${tx.type}</span></td>
+                    <td>$${tx.amount.toFixed(2)}</td>
+                    <td>${new Date(tx.timestamp).toLocaleString()}</td>
+                </tr>
+            `).join('');
+        });
+
+    function logout() {
+        localStorage.removeItem('username');
+        window.location.href = '/';
+    }
+</script>
+</body>
+</html>

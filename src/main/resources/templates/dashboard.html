@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - WajihBank</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; color: white; }
+        .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; }
+        .balance-amount { font-size: 2.5rem; color: #00d4ff; font-weight: bold; }
+        .navbar { background: rgba(0,0,0,0.3) !important; }
+        .chat-box { height: 200px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; }
+        .msg-user { color: #00d4ff; }
+        .msg-ai { color: #aaa; }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-dark px-4 py-3">
+    <span class="navbar-brand fw-bold">💳 WajihBank</span>
+    <div class="d-flex gap-3 align-items-center">
+        <span class="text-info" id="navUsername"></span>
+        <a href="/transactions" class="btn btn-outline-info btn-sm">Transactions</a>
+        <button onclick="logout()" class="btn btn-outline-danger btn-sm">Logout</button>
+    </div>
+</nav>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+
+            <div class="glass p-4 text-center mb-4">
+                <p class="text-secondary mb-1">Current Balance</p>
+                <div class="balance-amount" id="balanceDisplay">Loading...</div>
+            </div>
+
+            <div class="glass p-4 mb-3">
+                <h5 class="text-info mb-3">Deposit</h5>
+                <div class="input-group">
+                    <span class="input-group-text bg-dark text-white border-secondary">$</span>
+                    <input type="number" id="depositAmount" class="form-control bg-dark text-white border-secondary" placeholder="Amount">
+                    <button onclick="deposit()" class="btn btn-success">Deposit</button>
+                </div>
+            </div>
+
+            <div class="glass p-4 mb-3">
+                <h5 class="text-warning mb-3">Withdraw</h5>
+                <div class="input-group">
+                    <span class="input-group-text bg-dark text-white border-secondary">$</span>
+                    <input type="number" id="withdrawAmount" class="form-control bg-dark text-white border-secondary" placeholder="Amount">
+                    <button onclick="withdraw()" class="btn btn-warning">Withdraw</button>
+                </div>
+            </div>
+
+            <div id="alertMsg" class="d-none"></div>
+
+            <div class="glass p-4 mb-3">
+                <h5 class="text-info mb-3">🤖 AI Banking Assistant</h5>
+                <div class="chat-box mb-3" id="chatBox">
+                    <p class="msg-ai">Hi! Ask me anything about your account.</p>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="chatInput" class="form-control bg-dark text-white border-secondary" placeholder="Ask AI about your finances...">
+                    <button onclick="sendMessage()" class="btn btn-info">Send</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    const username = localStorage.getItem('username');
+    if (!username) window.location.href = '/';
+    document.getElementById('navUsername').textContent = username;
+
+    function loadBalance() {
+        fetch(`/api/balance/${username}`)
+            .then(r => r.json())
+            .then(balance => {
+                document.getElementById('balanceDisplay').textContent = '$' + balance.toFixed(2);
+            });
+    }
+
+    function deposit() {
+        const amount = document.getElementById('depositAmount').value;
+        fetch(`/api/deposit/${username}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({amount: parseFloat(amount)})
+        }).then(r => r.text()).then(msg => {
+            showAlert(msg, 'success');
+            loadBalance();
+            document.getElementById('depositAmount').value = '';
+        }).catch(() => showAlert('Deposit failed', 'danger'));
+    }
+
+    function withdraw() {
+        const amount = document.getElementById('withdrawAmount').value;
+        fetch(`/api/withdraw/${username}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({amount: parseFloat(amount)})
+        }).then(r => r.text()).then(msg => {
+            showAlert(msg, 'success');
+            loadBalance();
+            document.getElementById('withdrawAmount').value = '';
+        }).catch(() => showAlert('Withdrawal failed', 'danger'));
+    }
+
+    function sendMessage() {
+        const input = document.getElementById('chatInput');
+        const message = input.value.trim();
+        if (!message) return;
+
+        appendMessage('You', message, 'msg-user');
+        input.value = '';
+        appendMessage('AI', 'Thinking...', 'msg-ai');
+
+        fetch(`/api/ai/chat/${username}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message})
+        }).then(r => r.json()).then(data => {
+            removeLastMessage();
+            appendMessage('AI', data.response, 'msg-ai');
+        }).catch(() => {
+            removeLastMessage();
+            appendMessage('AI', 'Something went wrong.', 'msg-ai');
+        });
+    }
+
+    function appendMessage(sender, text, cssClass) {
+        const chatBox = document.getElementById('chatBox');
+        const p = document.createElement('p');
+        p.className = cssClass;
+        p.innerHTML = `<strong>${sender}:</strong> ${text}`;
+        chatBox.appendChild(p);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function removeLastMessage() {
+        const chatBox = document.getElementById('chatBox');
+        chatBox.removeChild(chatBox.lastChild);
+    }
+
+    function showAlert(msg, type) {
+        const el = document.getElementById('alertMsg');
+        el.className = `alert alert-${type}`;
+        el.textContent = msg;
+        el.classList.remove('d-none');
+        setTimeout(() => el.classList.add('d-none'), 3000);
+    }
+
+    function logout() {
+        localStorage.removeItem('username');
+        window.location.href = '/';
+    }
+
+    document.getElementById('chatInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') sendMessage();
+    });
+
+    loadBalance();
+</script>
+</body>
+</html>

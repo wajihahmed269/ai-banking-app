@@ -12,6 +12,8 @@
         table { color: white; }
         .badge-deposit { background: #198754; }
         .badge-withdrawal { background: #dc3545; }
+        .form-control, .form-select { background: #1a1a2e !important; color: white !important; border-color: #444 !important; }
+        .form-select option { background: #1a1a2e; }
     </style>
 </head>
 <body>
@@ -22,10 +24,34 @@
         <button onclick="logout()" class="btn btn-outline-danger btn-sm">Logout</button>
     </div>
 </nav>
-
 <div class="container mt-5">
+    <div class="glass p-4 mb-3">
+        <h6 class="text-info mb-3">🔍 Filter Transactions</h6>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <select id="filterType" class="form-select form-select-sm">
+                    <option value="ALL">All Types</option>
+                    <option value="DEPOSIT">Deposit Only</option>
+                    <option value="WITHDRAWAL">Withdrawal Only</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input type="date" id="filterFrom" class="form-control form-control-sm" placeholder="From date">
+            </div>
+            <div class="col-md-3">
+                <input type="date" id="filterTo" class="form-control form-control-sm" placeholder="To date">
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button onclick="applyFilters()" class="btn btn-info btn-sm w-100">Apply</button>
+                <button onclick="resetFilters()" class="btn btn-outline-secondary btn-sm w-100">Reset</button>
+            </div>
+        </div>
+    </div>
     <div class="glass p-4">
-        <h4 class="text-info mb-4">Transaction History</h4>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="text-info mb-0">Transaction History</h4>
+            <span class="text-secondary small" id="resultCount"></span>
+        </div>
         <div class="table-responsive">
             <table class="table table-dark table-hover">
                 <thead>
@@ -43,28 +69,59 @@
         </div>
     </div>
 </div>
-
 <script>
     const username = localStorage.getItem('username');
     if (!username) window.location.href = '/';
 
+    let allTransactions = [];
+
     fetch(`/api/transactions/${username}`)
         .then(r => r.json())
         .then(transactions => {
-            const tbody = document.getElementById('txTableBody');
-            if (transactions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary">No transactions yet</td></tr>';
-                return;
-            }
-            tbody.innerHTML = transactions.map((tx, i) => `
-                <tr>
-                    <td>${i + 1}</td>
-                    <td><span class="badge badge-${tx.type.toLowerCase()}">${tx.type}</span></td>
-                    <td>$${tx.amount.toFixed(2)}</td>
-                    <td>${new Date(tx.timestamp).toLocaleString()}</td>
-                </tr>
-            `).join('');
+            allTransactions = transactions;
+            renderTable(allTransactions);
         });
+
+    function applyFilters() {
+        const type = document.getElementById('filterType').value;
+        const from = document.getElementById('filterFrom').value;
+        const to = document.getElementById('filterTo').value;
+
+        let filtered = allTransactions.filter(tx => {
+            const matchType = type === 'ALL' || tx.type === type;
+            const txDate = new Date(tx.timestamp);
+            const matchFrom = !from || txDate >= new Date(from);
+            const matchTo = !to || txDate <= new Date(to + 'T23:59:59');
+            return matchType && matchFrom && matchTo;
+        });
+
+        renderTable(filtered);
+    }
+
+    function resetFilters() {
+        document.getElementById('filterType').value = 'ALL';
+        document.getElementById('filterFrom').value = '';
+        document.getElementById('filterTo').value = '';
+        renderTable(allTransactions);
+    }
+
+    function renderTable(transactions) {
+        const tbody = document.getElementById('txTableBody');
+        document.getElementById('resultCount').textContent = `${transactions.length} transaction(s)`;
+
+        if (transactions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary">No transactions found</td></tr>';
+            return;
+        }
+        tbody.innerHTML = transactions.map((tx, i) => `
+            <tr>
+                <td>${i + 1}</td>
+                <td><span class="badge badge-${tx.type.toLowerCase()}">${tx.type}</span></td>
+                <td>$${tx.amount.toFixed(2)}</td>
+                <td>${new Date(tx.timestamp).toLocaleString()}</td>
+            </tr>
+        `).join('');
+    }
 
     function logout() {
         localStorage.removeItem('username');

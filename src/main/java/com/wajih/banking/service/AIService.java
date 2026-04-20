@@ -44,7 +44,7 @@ public class AIService {
 
         try {
             ResponseEntity<Map> response = restTemplate.postForEntity(
-                "http://172.17.0.1:11434/api/generate",
+                "http://172.31.38.136:11434/api/generate",
                 request,
                 Map.class
             );

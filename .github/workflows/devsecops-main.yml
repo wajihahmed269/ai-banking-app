@@ -5,17 +5,32 @@ on:
     branches:
       - main
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   ci:
     name: CI Pipeline
     uses: ./.github/workflows/ci.yml
+    permissions:
+      id-token: write
+      contents: read
 
   build:
     name: Build Pipeline
     needs: ci
     uses: ./.github/workflows/build.yml
+    permissions:
+      id-token: write
+      contents: read
+    secrets: inherit
 
   cd:
     name: CD Pipeline
     needs: build
     uses: ./.github/workflows/cd.yml
+    permissions:
+      id-token: write
+      contents: read
+    secrets: inherit

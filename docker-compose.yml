@@ -1,40 +1,41 @@
-version: '3.8'
-
 services:
-  mysql:
+  db:
     image: mysql:8.0
-    container_name: mysql-banking
-    restart: unless-stopped
+    container_name: db
     environment:
-      MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: bankingdb
-    ports:
-      - "3306:3306"
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - mysql-data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
+    networks:
+      - bankapp-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  banking-app:
-    build: .
-    container_name: banking-app
-    restart: unless-stopped
+  app:
+    image: ${IMAGE_URI}
+    container_name: bankapp
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bankingdb
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: root123
+      SPRING_DATASOURCE_URL: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      OLLAMA_BASE_URL: ${OLLAMA_URL}
     depends_on:
-      mysql:
+      db:
         condition: service_healthy
+    networks:
+      - bankapp-network
 
 networks:
-  default:
-    name: banking-network
+  bankapp-network:
+    driver: bridge
 
 volumes:
-  mysql-data:
+  mysql_data:

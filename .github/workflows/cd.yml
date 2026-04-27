@@ -1,0 +1,85 @@
+name: CD Pipeline
+
+on:
+  workflow_call:
+
+jobs:
+  deploy:
+    name: Deploy - EC2
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Fetch secrets from AWS Secrets Manager
+            SECRET=$(aws secretsmanager get-secret-value \
+              --secret-id bankapp/prod-secrets \
+              --region eu-north-1 \
+              --query SecretString \
+              --output text)
+
+            export DB_HOST=$(echo $SECRET | jq -r '.DB_HOST')
+            export DB_PORT=$(echo $SECRET | jq -r '.DB_PORT')
+            export DB_NAME=$(echo $SECRET | jq -r '.DB_NAME')
+            export DB_USER=$(echo $SECRET | jq -r '.DB_USER')
+            export DB_PASSWORD=$(echo $SECRET | jq -r '.DB_PASSWORD')
+            export OLLAMA_URL=$(echo $SECRET | jq -r '.OLLAMA_URL')
+
+            # Login to ECR
+            aws ecr get-login-password --region eu-north-1 | \
+              docker login --username AWS \
+              --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+            # Pull latest image
+            IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+            docker pull $IMAGE_URI
+
+            # Update docker-compose and restart
+            cd /home/ubuntu
+            IMAGE_URI=$IMAGE_URI \
+            DB_HOST=$DB_HOST \
+            DB_PORT=$DB_PORT \
+            DB_NAME=$DB_NAME \
+            DB_USER=$DB_USER \
+            DB_PASSWORD=$DB_PASSWORD \
+            OLLAMA_URL=$OLLAMA_URL \
+            docker compose up -d --force-recreate
+
+  dast:
+    name: DAST - OWASP ZAP
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: Wait for app to be ready
+        run: sleep 30
+
+      - name: Run OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://${{ secrets.EC2_HOST }}:8080'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+        continue-on-error: true
+
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-report
+          path: report_html.html

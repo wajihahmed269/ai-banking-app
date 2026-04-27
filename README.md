@@ -38,3 +38,4 @@ A real-world example of using AI tools effectively: one for planning, one for bu
 
 ## Live Demo
 http://13.63.237.170:8080
+## DevSecOps Pipeline Active

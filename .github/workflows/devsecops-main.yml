@@ -1,0 +1,21 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci:
+    name: CI Pipeline
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build Pipeline
+    needs: ci
+    uses: ./.github/workflows/build.yml
+
+  cd:
+    name: CD Pipeline
+    needs: build
+    uses: ./.github/workflows/cd.yml

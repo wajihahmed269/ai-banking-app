@@ -1,5 +1,22 @@
-FROM eclipse-temurin:17-jdk-alpine
+# Build stage
+FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /app
-COPY target/*.jar app.jar
+COPY . .
+RUN chmod +x mvnw && ./mvnw clean package -DskipTests -B
+
+# Run stage - Alpine has significantly fewer CVEs
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+
+# Pull latest security patches for OS libraries
+RUN apk update && apk upgrade --no-cache
+
+# Create a non-root user for security
+RUN addgroup -S devsecops && adduser -S -G devsecops devsecops
+USER devsecops
+
+# Copy only the built artifact
+COPY --from=build /app/target/*.jar app.jar
+
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

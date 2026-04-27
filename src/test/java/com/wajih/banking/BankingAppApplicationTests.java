@@ -11,8 +11,3 @@ class BankingAppApplicationTests {
 	}
 
 }
-<dependency>
-    <groupId>io.awspring.cloud</groupId>
-    <artifactId>spring-cloud-aws-starter-secrets-manager</artifactId>
-    <version>3.1.1</version>
-</dependency>

@@ -33,7 +33,7 @@ public class AIService {
         context.append(" Answer briefly in 2-3 sentences.");
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", "tinyllama");
+        requestBody.put("model", "llama3.2");
         requestBody.put("prompt", context.toString());
         requestBody.put("stream", false);
 

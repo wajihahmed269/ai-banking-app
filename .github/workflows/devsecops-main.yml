@@ -12,7 +12,7 @@ permissions:
   security-events: write
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: eu-north-1
   ECR_REPOSITORY: devsecops-bankapp
   IMAGE_TAG: ${{ github.sha }}
   EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -156,7 +156,7 @@ jobs:
           chmod 600 private_key.pem
           ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ env.EC2_USER }}@${{ env.EC2_HOST }} << 'EOF'
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
-            cd ~/bankapp
+            cd ~/ai-banking-app
             docker compose pull
             docker compose up -d --force-recreate
             docker system prune -f

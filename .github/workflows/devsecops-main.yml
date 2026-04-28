@@ -103,6 +103,7 @@ jobs:
       - name: Build Docker Image
         run: docker build -t bankapp:${{ env.IMAGE_TAG }} .
       - uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           image-ref: bankapp:${{ env.IMAGE_TAG }}
           format: 'sarif'

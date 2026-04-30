@@ -233,7 +233,10 @@ jobs:
           echo "$PRIVATE_KEY" > azure_key.pem
           chmod 600 azure_key.pem
           ssh -o StrictHostKeyChecking=no -i azure_key.pem ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }} << 'ENDSSH'
-            SECRET=$(az keyvault secret list --vault-name bankapp-keyvault --query "[].name" -o tsv 2>/dev/null || echo "")
+            az login --identity
+
+
+
 
             DB_HOST=$(az keyvault secret show --vault-name bankapp-keyvault --name DB-HOST --query value -o tsv)
             DB_PORT=$(az keyvault secret show --vault-name bankapp-keyvault --name DB-PORT --query value -o tsv)

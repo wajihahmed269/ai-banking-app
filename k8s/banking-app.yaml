@@ -2,8 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: banking-app
+  namespace: default
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: banking-app
@@ -14,25 +15,54 @@ spec:
     spec:
       containers:
       - name: banking-app
-        image: banking-app:latest
-        imagePullPolicy: Never
+        image: PLACEHOLDER_IMAGE
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
         env:
         - name: SPRING_DATASOURCE_URL
-          value: "jdbc:mysql://mysql-service:3306/bankingdb"
+          value: "jdbc:mysql://mysql-service:3306/bankappdb"
         - name: SPRING_DATASOURCE_USERNAME
-          value: "root"
+          valueFrom:
+            secretKeyRef:
+              name: banking-secret
+              key: mysql-user
         - name: SPRING_DATASOURCE_PASSWORD
           valueFrom:
             secretKeyRef:
               name: banking-secret
               key: mysql-root-password
+        - name: OLLAMA_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: banking-secret
+              key: ollama-url
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 45
+          periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: banking-app-service
+  namespace: default
 spec:
   type: NodePort
   selector:
@@ -41,3 +71,32 @@ spec:
   - port: 8080
     targetPort: 8080
     nodePort: 30080
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: banking-app-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: banking-app
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+
+          python3 -c "
+content = open('k8s/banking-app.yaml').read()
+old = '      containers:'
+new = '      imagePullSecrets:\n      - name: ecr-secret\n      containers:'
+content = content.replace(old, new, 1)
+open('k8s/banking-app.yaml', 'w').write(content)
+print('Done')
+"

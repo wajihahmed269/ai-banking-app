@@ -28,7 +28,7 @@ spec:
             cpu: "500m"
         env:
         - name: SPRING_DATASOURCE_URL
-          value: "jdbc:mysql://mysql-service:3306/bankappdb"
+          value: "jdbc:mysql://bankapp-db.cx4ysog2q466.eu-north-1.rds.amazonaws.com:3306/bankappdb"
         - name: SPRING_DATASOURCE_USERNAME
           valueFrom:
             secretKeyRef:

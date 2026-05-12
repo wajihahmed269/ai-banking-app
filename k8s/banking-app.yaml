@@ -13,6 +13,8 @@ spec:
       labels:
         app: banking-app
     spec:
+      imagePullSecrets:
+      - name: ecr-secret
       containers:
       - name: banking-app
         image: PLACEHOLDER_IMAGE
@@ -64,13 +66,12 @@ metadata:
   name: banking-app-service
   namespace: default
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: banking-app
   ports:
-  - port: 8080
+  - port: 80
     targetPort: 8080
-    nodePort: 30080
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -91,12 +92,3 @@ spec:
       target:
         type: Utilization
         averageUtilization: 70
-
-          python3 -c "
-content = open('k8s/banking-app.yaml').read()
-old = '      containers:'
-new = '      imagePullSecrets:\n      - name: ecr-secret\n      containers:'
-content = content.replace(old, new, 1)
-open('k8s/banking-app.yaml', 'w').write(content)
-print('Done')
-"

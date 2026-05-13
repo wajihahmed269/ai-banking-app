@@ -2,19 +2,24 @@ package com.wajih.banking.service;
 
 import com.wajih.banking.entity.Transaction;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 
 @Service
 @RequiredArgsConstructor
 public class AIService {
 
     private final RestTemplate restTemplate;
+
+    @Value("${ollama.base-url:http://localhost:11434}")
+    private String ollamaBaseUrl;
 
     public String chat(String userMessage, double balance, List<Transaction> transactions) {
         StringBuilder context = new StringBuilder();
@@ -39,18 +44,20 @@ public class AIService {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
 
         try {
             ResponseEntity<Map> response = restTemplate.postForEntity(
-                "http://172.31.38.136:11434/api/generate",
+                ollamaBaseUrl + "/api/generate",
                 request,
                 Map.class
             );
-            return (String) response.getBody().get("response");
+            Object result = response.getBody().get("response");
+            return result != null ? result.toString() : "No response from AI.";
+        } catch (ResourceAccessException e) {
+            return "AI service is currently unavailable. Please try again later.";
         } catch (Exception e) {
-            return "AI service unavailable right now.";
+            return "Unable to process your request right now.";
         }
     }
 }

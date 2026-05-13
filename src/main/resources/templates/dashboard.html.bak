@@ -52,16 +52,6 @@
                 </div>
             </div>
 
-            <div class="glass p-4 mb-3">
-                <h5 class="text-primary mb-3">Transfer Funds</h5>
-                <input type="text" id="transferTo" class="form-control bg-dark text-white border-secondary mb-2" placeholder="Recipient Username">
-                <div class="input-group">
-                    <span class="input-group-text bg-dark text-white border-secondary">$</span>
-                    <input type="number" id="transferAmount" class="form-control bg-dark text-white border-secondary" placeholder="Amount">
-                    <button onclick="transfer()" class="btn btn-primary">Transfer</button>
-                </div>
-            </div>
-
             <div id="alertMsg" class="d-none"></div>
 
             <div class="glass p-4 mb-3">
@@ -116,30 +106,6 @@
             loadBalance();
             document.getElementById('withdrawAmount').value = '';
         }).catch(() => showAlert('Withdrawal failed', 'danger'));
-    }
-
-    function transfer() {
-        const toUsername = document.getElementById('transferTo').value.trim();
-        const amount = document.getElementById('transferAmount').value;
-
-        if (!toUsername || !amount) {
-            showAlert('Recipient and amount are required', 'danger');
-            return;
-        }
-
-        fetch(`/api/transfer/${username}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                toUsername: toUsername,
-                amount: parseFloat(amount)
-            })
-        }).then(r => r.text()).then(msg => {
-            showAlert(msg, 'success');
-            loadBalance();
-            document.getElementById('transferTo').value = '';
-            document.getElementById('transferAmount').value = '';
-        }).catch(() => showAlert('Transfer failed', 'danger'));
     }
 
     function sendMessage() {

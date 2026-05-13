@@ -35,6 +35,17 @@ public class BankingController {
         return ResponseEntity.ok("Withdrawal successful");
     }
 
+    @PostMapping("/transfer/{username}")
+    public ResponseEntity<String> transfer(@PathVariable String username,
+                                           @RequestBody Map<String, Object> body) {
+        String toUsername = body.get("toUsername").toString();
+        Double amount = Double.valueOf(body.get("amount").toString());
+
+        bankingService.transfer(username, toUsername, amount);
+
+        return ResponseEntity.ok("Transfer successful");
+    }
+
     @GetMapping("/transactions/{username}")
     public ResponseEntity<List<Transaction>> getTransactions(@PathVariable String username) {
         return ResponseEntity.ok(bankingService.getTransactions(username));

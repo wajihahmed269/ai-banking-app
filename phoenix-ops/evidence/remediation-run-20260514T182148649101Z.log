@@ -1,0 +1,36 @@
+timestamp_utc=20260514T182148649101Z
+alert_name=BankingAppDown
+command=/home/ubuntu/ai-banking-app/phoenix-ops/remediation/heal-banking-app.sh
+
+alertmanager_payload:
+{
+  "alerts": [
+    {
+      "labels": {
+        "alertname": "BankingAppDown"
+      }
+    }
+  ]
+}
+
+remediation_output:
+Collecting banking-app pod status...
+Collecting last 20 log lines from deployment/banking-app for bounded context...
+AI diagnosis: skipped. Set OLLAMA_DIAGNOSIS_ENABLED=true to enable optional Ollama diagnosis.
+Restarting deployment/banking-app...
+deployment.apps/banking-app restarted
+Waiting for rollout completion with timeout 300s...
+Waiting for deployment "banking-app" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "banking-app" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "banking-app" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "banking-app" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "banking-app" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "banking-app" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "banking-app" rollout to finish: 1 old replicas are pending termination...
+deployment "banking-app" successfully rolled out
+
+Final banking-app pod status:
+NAME                           READY   STATUS        RESTARTS   AGE
+banking-app-5c456b6578-4km6c   1/1     Terminating   0          4m53s
+banking-app-7779fd7c79-5bpg7   1/1     Running       0          62s
+banking-app-7779fd7c79-92jg7   1/1     Running       0          2m5s

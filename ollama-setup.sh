@@ -22,9 +22,9 @@ EOF
 systemctl daemon-reload
 systemctl restart ollama
 
-# 5. Pull the TinyLlama model
+# 5. Pull the model used by the banking app
 sleep 5
-ollama pull tinyllama
+ollama pull llama3.2:3b
 
 # 6. Verify
 ollama list

@@ -46,6 +46,8 @@ spec:
             secretKeyRef:
               name: banking-secret
               key: ollama-url
+        - name: OLLAMA_MODEL
+          value: "llama3.2:3b"
         livenessProbe:
           httpGet:
             path: /

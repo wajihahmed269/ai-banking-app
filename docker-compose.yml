@@ -9,6 +9,7 @@ services:
       SPRING_DATASOURCE_USERNAME: ${DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
       OLLAMA_BASE_URL: ${OLLAMA_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
     restart: always
     networks:
       - bankapp-network

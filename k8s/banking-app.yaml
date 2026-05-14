@@ -30,19 +30,20 @@ spec:
             cpu: "500m"
         env:
         - name: SPRING_DATASOURCE_URL
-          value: "jdbc:mysql://bankapp-db.cx4ysog2q466.eu-north-1.rds.amazonaws.com:3306/bankappdb"
+          valueFrom:
+            secretKeyRef:
+              name: banking-secret
+              key: mysql-url
         - name: SPRING_DATASOURCE_USERNAME
-          value: ""
           valueFrom:
             secretKeyRef:
               name: banking-secret
-              key: mysql-user
+              key: mysql-username
         - name: SPRING_DATASOURCE_PASSWORD
-          value: ""
           valueFrom:
             secretKeyRef:
               name: banking-secret
-              key: mysql-root-password
+              key: mysql-password
         - name: OLLAMA_BASE_URL
           valueFrom:
             secretKeyRef:

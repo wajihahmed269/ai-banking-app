@@ -11,6 +11,8 @@ LOG_TAIL_LINES="${LOG_TAIL_LINES:-20}"
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-300s}"
 APP_LABEL="app=banking-app"
 DEPLOYMENT="deployment/banking-app"
+TARGET_REPLICAS="2"
+ALERT_NAME="${1:-BankingAppDown}"
 OLLAMA_OUTPUT_FILE=""
 OLLAMA_PID=""
 
@@ -24,6 +26,21 @@ require_command() {
 }
 
 require_command kubectl
+
+if [[ "$DEPLOYMENT" != "deployment/banking-app" ]]; then
+  echo "Error: unsafe deployment target: $DEPLOYMENT" >&2
+  exit 1
+fi
+
+if [[ "$TARGET_REPLICAS" != "2" ]]; then
+  echo "Error: unsafe replica target: $TARGET_REPLICAS" >&2
+  exit 1
+fi
+
+if [[ "$ALERT_NAME" != "BankingAppDown" && "$ALERT_NAME" != "BankingAppHighRestarts" ]]; then
+  echo "Error: unsupported alert name: $ALERT_NAME" >&2
+  exit 1
+fi
 
 if [[ "$OLLAMA_DIAGNOSIS_ENABLED" == "true" ]]; then
   require_command jq
@@ -167,6 +184,13 @@ echo "Collecting last ${LOG_TAIL_LINES} log lines from $DEPLOYMENT for bounded c
 deployment_logs="$(kubectl logs "$DEPLOYMENT" --tail="$LOG_TAIL_LINES" --all-containers=true 2>&1 | truncate_text "$OLLAMA_CONTEXT_CHARS" || true)"
 
 start_ollama_diagnosis "$pod_status" "$deployment_logs"
+
+if [[ "$ALERT_NAME" == "BankingAppDown" ]]; then
+  echo "Restoring $DEPLOYMENT to ${TARGET_REPLICAS} replicas for $ALERT_NAME..."
+  kubectl scale "$DEPLOYMENT" --replicas="$TARGET_REPLICAS"
+else
+  echo "Replica restore skipped for $ALERT_NAME; keeping existing replica count."
+fi
 
 echo "Restarting $DEPLOYMENT..."
 kubectl rollout restart "$DEPLOYMENT"

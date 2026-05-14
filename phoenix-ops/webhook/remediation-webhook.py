@@ -64,7 +64,7 @@ def _create_run_log(*, alert_name: str, payload: dict[str, Any]) -> Path:
             [
                 f"timestamp_utc={timestamp}",
                 f"alert_name={alert_name}",
-                f"command={REMEDIATION_SCRIPT}",
+                f"command={REMEDIATION_SCRIPT} {alert_name}",
                 "",
                 "alertmanager_payload:",
                 json.dumps(payload, indent=2, sort_keys=True),
@@ -120,7 +120,7 @@ def alertmanager_webhook():
 
     with log_path.open("a", encoding="utf-8") as log_file:
         process = subprocess.Popen(
-            [str(REMEDIATION_SCRIPT)],
+            [str(REMEDIATION_SCRIPT), alert_name],
             cwd=str(REPO_ROOT),
             stdout=log_file,
             stderr=log_file,

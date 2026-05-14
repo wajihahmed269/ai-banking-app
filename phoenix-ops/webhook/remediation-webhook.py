@@ -54,6 +54,11 @@ def _first_allowed_alert(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _should_remediate(payload: dict[str, Any]) -> bool:
+    status = payload.get("status")
+    return status is None or status == "firing"
+
+
 def _create_run_log(*, alert_name: str, payload: dict[str, Any]) -> Path:
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = _utc_timestamp()
@@ -92,6 +97,16 @@ def alertmanager_webhook():
                 }
             ),
             400,
+        )
+
+    if not _should_remediate(payload):
+        return jsonify(
+            {
+                "status": "ignored",
+                "alert_name": None,
+                "log_path": None,
+                "alertmanager_status": payload.get("status"),
+            }
         )
 
     alert_name = _first_allowed_alert(payload)

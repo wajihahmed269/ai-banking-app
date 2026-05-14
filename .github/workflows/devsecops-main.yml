@@ -153,17 +153,25 @@ jobs:
       - name: Deploy via SSH
         env:
           PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           echo "$PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ env.EC2_USER }}@${{ env.EC2_HOST }} << 'EOF'
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
-            cd ~/ai-banking-app
-            docker compose pull
-            docker compose up -d --force-recreate
-            docker system prune -f
+          IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          sed "s|PLACEHOLDER_IMAGE|${IMAGE_URI}|g" k8s/banking-app.yaml > banking-app.rendered.yaml
+          scp -o StrictHostKeyChecking=no -i private_key.pem banking-app.rendered.yaml ${{ env.EC2_USER }}@${{ env.EC2_HOST }}:/tmp/banking-app.yaml
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ env.EC2_USER }}@${{ env.EC2_HOST }} << EOF
+            set -euo pipefail
+            kubectl create secret docker-registry ecr-secret \
+              --docker-server=${ECR_REGISTRY} \
+              --docker-username=AWS \
+              --docker-password="\$(aws ecr get-login-password --region ${{ env.AWS_REGION }})" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            kubectl apply -f /tmp/banking-app.yaml
+            kubectl rollout status deployment/banking-app --timeout=300s
           EOF
-          rm -f private_key.pem
+          rm -f private_key.pem banking-app.rendered.yaml
 
   # Gate 9: DAST
   dast:

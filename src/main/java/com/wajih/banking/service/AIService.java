@@ -26,7 +26,7 @@ public class AIService {
     @Value("${ollama.base-url:http://localhost:11434}")
     private String ollamaBaseUrl;
 
-    @Value("${ollama.model:tinyllama}")
+    @Value("${ollama.model:llama3.2:3b}")
     private String ollamaModel;
 
     @Value("${ollama.connect-timeout-ms:10000}")

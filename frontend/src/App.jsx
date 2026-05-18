@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 
 const Prism = lazy(() => import('./components/backgrounds/Prism'));
@@ -198,12 +198,65 @@ function Brand() {
   return <div className="brand"><svg className="brand-mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 15.5c4.6-7.1 9-9.7 14-8.8-2.4 1.9-4.2 4-5.5 6.4 2.2-.3 4.1-.1 5.8.6-4.7 4.2-9.2 5.5-14.3 1.8Z" /></svg><span>ZEPHYR</span></div>;
 }
 
+function usePerformanceMode() {
+  const getMode = useCallback(() => {
+    if (typeof window === 'undefined') return { reducedMotion: false, lowDevice: false };
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    const lowDevice = window.innerWidth < 768 || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+    return { reducedMotion, lowDevice };
+  }, []);
+
+  const [mode, setMode] = useState(getMode);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const updateMode = () => setMode(getMode());
+    window.addEventListener('resize', updateMode, { passive: true });
+    motionQuery?.addEventListener?.('change', updateMode);
+    return () => {
+      window.removeEventListener('resize', updateMode);
+      motionQuery?.removeEventListener?.('change', updateMode);
+    };
+  }, [getMode]);
+
+  return mode;
+}
+
 function PremiumSkeleton({ className = '' }) {
   return <div className={`premium-skeleton ${className}`.trim()} aria-hidden="true" />;
 }
 
+function SkeletonCard({ className = '', children }) {
+  return <div className={`skeleton-card ${className}`.trim()} aria-hidden="true">{children}</div>;
+}
+
+function SkeletonLine({ className = '' }) {
+  return <span className={`skeleton-line ${className}`.trim()} aria-hidden="true" />;
+}
+
+function DashboardSkeleton() {
+  return <SkeletonCard className="dashboard-skeleton"><SkeletonLine className="wide" /><SkeletonLine className="hero-line" /><SkeletonLine /><SkeletonLine className="short" /></SkeletonCard>;
+}
+
+function TransactionsSkeleton() {
+  return <div className="transactions-skeleton" aria-hidden="true">{Array.from({ length: 4 }).map((_, index) => <SkeletonCard className="transaction-skeleton-row" key={index}><SkeletonLine className="avatar-line" /><div><SkeletonLine /><SkeletonLine className="short" /></div><SkeletonLine className="amount-line" /></SkeletonCard>)}</div>;
+}
+
+function ProfileSkeleton() {
+  return <ProfileViewFallback />;
+}
+
+function AnalyticsSkeleton() {
+  return <div className="analytics-skeleton" aria-hidden="true">{Array.from({ length: 5 }).map((_, index) => <SkeletonCard key={index}><SkeletonLine className="short" /><SkeletonLine className="metric-line" /></SkeletonCard>)}</div>;
+}
+
+function AssistantBubbleSkeleton() {
+  return <PremiumSkeleton className="assistant-bubble-skeleton" />;
+}
+
 function PrismFallback() {
-  return <div className="prism-skeleton" aria-hidden="true" />;
+  return <div className="prism-static-fallback prism-skeleton" aria-hidden="true" />;
 }
 
 function AboutProfileFallback() {
@@ -381,8 +434,11 @@ export default function App() {
 }
 
 function LandingView({ openAuth }) {
+  const { reducedMotion, lowDevice } = usePerformanceMode();
+  const enablePrism = !reducedMotion && !lowDevice;
+
   return <div className="landing-page">
-    <div className="background"><Suspense fallback={<PrismFallback />}><Prism animationType="rotate" height={3.5} baseWidth={5.5} scale={4} glow={0.95} noise={0.03} bloom={0.85} hueShift={-0.32} colorFrequency={0.92} timeScale={0.34} offset={{ x: 330, y: 12 }} transparent suspendWhenOffscreen /></Suspense></div>
+    <div className="background">{enablePrism ? <Suspense fallback={<PrismFallback />}><Prism animationType="rotate" height={3.5} baseWidth={5.5} scale={4} glow={0.95} noise={0.03} bloom={0.85} hueShift={-0.32} colorFrequency={0.92} timeScale={0.34} offset={{ x: 330, y: 12 }} transparent suspendWhenOffscreen /></Suspense> : <PrismFallback />}</div>
     <div className="overlay" />
     <header className="navbar glass"><Brand /><nav className="nav-links"><a href="#intro">Intro</a><a href="#about">About</a><a href="#features">Features</a><button className="nav-sign-in" onClick={() => openAuth('signin')} type="button">Sign In</button></nav></header>
     <main className="hero"><section className="hero-content"><div className="announcement-pill"><svg className="pill-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7L12 18l-1.7-5.6-5.5-1.7L10.3 9 12 3.5Z" /></svg>Autonomous banking, quietly overengineered</div><h1>Just a Normal <span className="headline-gradient">Banking App</span></h1><p>Absolutely nothing overengineered behind the scenes.</p><div className="hero-actions"><button className="btn btn-primary" onClick={() => openAuth('signin')} type="button"><span>Sign In</span><span className="cta-arrow" aria-hidden="true">&gt;</span></button><a className="btn btn-secondary" href="#intro"><span>Explore Architecture</span><span className="cta-arrow" aria-hidden="true">&gt;</span></a></div></section><TechStrip /></main>
@@ -392,20 +448,20 @@ function LandingView({ openAuth }) {
 
 function LandingSections() {
   const aboutRef = useRef(null);
-  const [aboutReady, setAboutReady] = useState(false);
+  const [aboutActive, setAboutActive] = useState(false);
+  const { reducedMotion, lowDevice } = usePerformanceMode();
+  const enableGridScan = aboutActive && !reducedMotion && !lowDevice;
+  const enableAboutCards = aboutActive;
 
   useEffect(() => {
     const node = aboutRef.current;
     if (!node) return undefined;
     if (!('IntersectionObserver' in window)) {
-      setAboutReady(true);
+      setAboutActive(true);
       return undefined;
     }
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
-        setAboutReady(true);
-        observer.disconnect();
-      }
+      setAboutActive(entry.isIntersecting);
     }, { rootMargin: '260px 0px' });
     observer.observe(node);
     return () => observer.disconnect();
@@ -415,7 +471,7 @@ function LandingSections() {
     <section className="content-section" id="intro"><div className="section-heading"><p>Intro</p><h2>Banking infrastructure that feels quiet on the surface.</h2></div><div className="section-grid three"><article className="section-card"><span>01</span><h3>AI banking interface</h3><p>Zephyr brings a conversational layer to account activity, operational insight, and user workflows.</p></article><article className="section-card"><span>02</span><h3>Self-healing infrastructure</h3><p>Behind the interface, the platform is shaped around automated recovery and resilient service patterns.</p></article><article className="section-card"><span>03</span><h3>Cloud-native reliability</h3><p>Designed for modern deployment pipelines, observable systems, and durable financial experiences.</p></article></div></section>
     <section className="about-section about-grid-scan-ready" id="about" ref={aboutRef}>
       <div className="about-grid-bg" aria-hidden="true">
-        {aboutReady ? <Suspense fallback={<PremiumSkeleton className="gridscan-skeleton" />}><GridScan
+        {enableGridScan ? <Suspense fallback={<PremiumSkeleton className="gridscan-skeleton" />}><GridScan
           enableWebcam={false}
           showPreview={false}
           lineThickness={1}
@@ -436,7 +492,7 @@ function LandingSections() {
           scanDelay={2.2}
           scanDirection="pingpong"
           className="zephyr-grid-scan"
-        /></Suspense> : <PremiumSkeleton className="gridscan-skeleton" />}
+        /></Suspense> : <div className="static-grid-fallback" />}
       </div>
       <div className="about-section-inner">
         <div className="about-copy">
@@ -445,7 +501,7 @@ function LandingSections() {
           <p>DevOps Engineer building Phoenix-Ops and Zephyr — a self-healing banking platform powered by Kubernetes, observability, and AI-assisted remediation.</p>
         </div>
         <div className="about-profile-wrap">
-          {aboutReady ? <Suspense fallback={<AboutProfileFallback />}><ProfileCard
+          {enableAboutCards ? <Suspense fallback={<AboutProfileFallback />}><ProfileCard
             avatarUrl={profileImage}
             miniAvatarUrl={profileImage}
             iconUrl=""
@@ -456,8 +512,8 @@ function LandingSections() {
             status="Building Zephyr"
             contactText="GitHub"
             showUserInfo
-            enableTilt
-            behindGlowEnabled
+            enableTilt={!reducedMotion && !lowDevice}
+            behindGlowEnabled={!reducedMotion}
             behindGlowColor="rgba(96, 165, 250, 0.36)"
             innerGradient="linear-gradient(145deg, rgba(99, 102, 241, 0.34) 0%, rgba(14, 165, 233, 0.18) 58%, rgba(2, 2, 3, 0.18) 100%)"
             onContactClick={() => window.open('https://github.com/wajihahmed269', '_blank', 'noopener,noreferrer')}
@@ -469,7 +525,7 @@ function LandingSections() {
             <h3>The stack behind Zephyr and Phoenix-Ops.</h3>
           </div>
           <div className="tool-grid">
-            {aboutReady ? <Suspense fallback={<ChromaGridFallback />}><ChromaGrid items={chromaToolItems} /></Suspense> : <ChromaGridFallback />}
+            {enableAboutCards ? <Suspense fallback={<ChromaGridFallback />}><ChromaGrid items={chromaToolItems} /></Suspense> : <ChromaGridFallback />}
           </div>
         </div>
       </div>
@@ -503,26 +559,44 @@ function NotificationPanel({ setView, closePanel }) {
 }
 
 function DashboardHome({ setView, showBalance, setShowBalance, balance, recentTransactions, aiInput, setAiInput, aiMessages, sendAiMessage, setQuickPanel }) {
-  const quickActions = [{ label: 'Transfer', icon: 'send', onClick: () => setView('transfer') }, { label: 'Add Money', icon: 'plus', onClick: () => setQuickPanel('addMoney') }, { label: 'Pay Bills', icon: 'bill', onClick: () => setQuickPanel('payBills') }, { label: 'History', icon: 'history', onClick: () => setView('transactions') }, { label: 'More', icon: 'more', onClick: () => setView('profile') }];
-  return <main className="dashboard-shell"><section className="dash-main"><div className="balance-card glass" onClick={() => setShowBalance((current) => !current)} role="button" tabIndex={0}><div className="balance-copy"><div className="card-title-row"><p>Total Balance</p><button className="icon-button" onClick={(event) => { event.stopPropagation(); setShowBalance((current) => !current); }} type="button" aria-label="Toggle balance"><MiniIcon type="eye" /></button></div><h1>{showBalance ? formatUSD(balance) : '••••••'}</h1><span>{showBalance ? 'Balance revealed' : 'Tap the card to reveal'}</span></div><div className="cat-stage"><img className={showBalance ? 'cat-image visible' : 'cat-image'} src="/assets/cats/cat-shocked.png" alt="Shocked cat face" /><img className={showBalance ? 'cat-image' : 'cat-image visible'} src="/assets/cats/cat-normal.png" alt="Cute standing cat" /></div></div><section className="quick-card glass"><div className="panel-heading"><h2>Quick Actions</h2></div><div className="quick-grid">{quickActions.map((action) => <button className="quick-action" key={action.label} onClick={action.onClick} type="button"><span><MiniIcon type={action.icon} /></span>{action.label}</button>)}</div></section><AiAssistant aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} sendAiMessage={sendAiMessage} /></section><aside className="dash-side"><RecentTransactions transactions={recentTransactions} onViewAll={() => setView('transactions')} /><InvestmentsCard openPanel={() => setQuickPanel('investment')} /></aside><DashboardTechStrip /></main>;
+  const openTransfer = useCallback(() => setView('transfer'), [setView]);
+  const openTransactions = useCallback(() => setView('transactions'), [setView]);
+  const openProfile = useCallback(() => setView('profile'), [setView]);
+  const openAddMoney = useCallback(() => setQuickPanel('addMoney'), [setQuickPanel]);
+  const openPayBills = useCallback(() => setQuickPanel('payBills'), [setQuickPanel]);
+  const openInvestment = useCallback(() => setQuickPanel('investment'), [setQuickPanel]);
+  const quickActions = useMemo(() => [{ label: 'Transfer', icon: 'send', onClick: openTransfer }, { label: 'Add Money', icon: 'plus', onClick: openAddMoney }, { label: 'Pay Bills', icon: 'bill', onClick: openPayBills }, { label: 'History', icon: 'history', onClick: openTransactions }, { label: 'More', icon: 'more', onClick: openProfile }], [openAddMoney, openPayBills, openProfile, openTransactions, openTransfer]);
+  return <main className="dashboard-shell"><section className="dash-main"><BalanceCard showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} /><QuickActions actions={quickActions} /><AiAssistant aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} sendAiMessage={sendAiMessage} /></section><aside className="dash-side"><RecentTransactions transactions={recentTransactions} onViewAll={openTransactions} /><InvestmentsCard openPanel={openInvestment} /></aside><DashboardTechStrip /></main>;
 }
 
-function RecentTransactions({ transactions: recentItems, onViewAll }) {
+const BalanceCard = memo(function BalanceCard({ showBalance, setShowBalance, balance }) {
+  const toggleBalance = useCallback(() => setShowBalance((current) => !current), [setShowBalance]);
+  return <div className="balance-card glass" onClick={toggleBalance} role="button" tabIndex={0}><div className="balance-copy"><div className="card-title-row"><p>Total Balance</p><button className="icon-button" onClick={(event) => { event.stopPropagation(); toggleBalance(); }} type="button" aria-label="Toggle balance"><MiniIcon type="eye" /></button></div><h1>{showBalance ? formatUSD(balance) : '••••••'}</h1><span>{showBalance ? 'Balance revealed' : 'Tap the card to reveal'}</span></div><div className="cat-stage"><img className={showBalance ? 'cat-image visible' : 'cat-image'} src="/assets/cats/cat-shocked.png" alt="Shocked cat face" loading="lazy" decoding="async" width="230" height="230" /><img className={showBalance ? 'cat-image' : 'cat-image visible'} src="/assets/cats/cat-normal.png" alt="Cute standing cat" loading="lazy" decoding="async" width="230" height="230" /></div></div>;
+});
+
+const QuickActions = memo(function QuickActions({ actions }) {
+  return <section className="quick-card glass"><div className="panel-heading"><h2>Quick Actions</h2></div><div className="quick-grid">{actions.map((action) => <button className="quick-action" key={action.label} onClick={action.onClick} type="button"><span><MiniIcon type={action.icon} /></span>{action.label}</button>)}</div></section>;
+});
+
+const RecentTransactions = memo(function RecentTransactions({ transactions: recentItems, onViewAll }) {
   return <section className="recent-card glass"><div className="panel-heading row"><h2>Recent Transactions</h2><button onClick={onViewAll} type="button">View All</button></div><div className="transaction-list">{recentItems.slice(0, 4).map((transaction, index) => <TransactionItem key={`${transaction.name}-${transaction.date}-${index}`} transaction={transaction} />)}</div></section>;
-}
+});
 
 function TransactionItem({ transaction }) {
   const positive = transaction.amount > 0;
   return <div className="transaction-item"><span className="merchant-icon">{transaction.name.slice(0, 1)}</span><div><strong>{transaction.name}</strong><small>{transaction.date}</small></div><b className={positive ? 'amount positive' : 'amount negative'}>{formatMoney(transaction.amount)}</b></div>;
 }
 
-function AiAssistant({ aiInput, setAiInput, aiMessages, sendAiMessage }) {
-  return <section className="ai-panel glass"><div className="panel-heading"><h2>AI Assistant</h2><p>Ask Zephyr about your account activity.</p></div><div className="suggestions"><button type="button" onClick={() => setAiInput('Why did my balance change?')}>Why did my balance change?</button><button type="button" onClick={() => setAiInput('Summarize recent spending')}>Summarize recent spending</button><button type="button" onClick={() => setAiInput('Any unusual activity?')}>Any unusual activity?</button></div><div className="chat-window">{aiMessages.map((message, index) => <p className={message.role === 'user' ? 'chat-bubble user' : 'chat-bubble'} key={`${message.role}-${index}`}>{message.text}</p>)}</div><form className="ai-form" onSubmit={sendAiMessage}><input value={aiInput} onChange={(event) => setAiInput(event.target.value)} placeholder="Ask Zephyr anything..." /><button className="btn btn-primary" type="submit">Send</button></form></section>;
-}
+const AiAssistant = memo(function AiAssistant({ aiInput, setAiInput, aiMessages, sendAiMessage }) {
+  const setBalancePrompt = useCallback(() => setAiInput('Why did my balance change?'), [setAiInput]);
+  const setSpendingPrompt = useCallback(() => setAiInput('Summarize recent spending'), [setAiInput]);
+  const setActivityPrompt = useCallback(() => setAiInput('Any unusual activity?'), [setAiInput]);
+  return <section className="ai-panel glass"><div className="panel-heading"><h2>AI Assistant</h2><p>Ask Zephyr about your account activity.</p></div><div className="suggestions"><button type="button" onClick={setBalancePrompt}>Why did my balance change?</button><button type="button" onClick={setSpendingPrompt}>Summarize recent spending</button><button type="button" onClick={setActivityPrompt}>Any unusual activity?</button></div><div className="chat-window">{aiMessages.map((message, index) => <p className={message.role === 'user' ? 'chat-bubble user' : 'chat-bubble'} key={`${message.role}-${index}`}>{message.text}</p>)}{false && <AssistantBubbleSkeleton />}</div><form className="ai-form" onSubmit={sendAiMessage}><input value={aiInput} onChange={(event) => setAiInput(event.target.value)} placeholder="Ask Zephyr anything..." /><button className="btn btn-primary" type="submit">Send</button></form></section>;
+});
 
-function InvestmentsCard({ openPanel }) {
+const InvestmentsCard = memo(function InvestmentsCard({ openPanel }) {
   return <section className="investment-card glass"><div className="panel-heading row"><div><h2>Investments</h2><p>Track market ideas in prototype mode.</p></div><button onClick={openPanel} type="button">View Markets</button></div><div className="portfolio-line"><strong>$12,840.22</strong><span>+2.4%</span></div><MiniChart /><div className="watchlist-mini">{watchlist.map(([symbol, change]) => <span key={symbol}>{symbol} <b className={change.startsWith('+') ? 'positive' : 'negative'}>{change}</b></span>)}</div></section>;
-}
+});
 
 function MiniChart({ large = false }) {
   return <svg className={large ? 'market-chart large' : 'market-chart'} viewBox="0 0 320 120" fill="none" aria-hidden="true"><path d="M8 92 C48 72 64 88 96 54 C124 24 142 60 170 42 C202 20 218 78 250 50 C276 28 292 35 312 18" /><path d="M8 92 C48 72 64 88 96 54 C124 24 142 60 170 42 C202 20 218 78 250 50 C276 28 292 35 312 18 L312 116 L8 116 Z" /></svg>;
@@ -599,11 +673,11 @@ function TransferView({ transferForm, setTransferForm, transferError, transferSu
 function AnalyticsView() {
   const stats = [['Monthly Income', '$2,950'], ['Monthly Spending', '$654'], ['Savings Rate', '72%'], ['Risk Score', 'Low'], ['Portfolio Growth', '+2.4%']];
   const bars = [['Shopping', 58], ['Subscriptions', 32], ['Transfer', 44], ['Food', 26]];
-  return <main className="dashboard-shell single"><PageHeader title="Analytics" /><div className="analytics-grid">{stats.map(([label, value]) => <section className="stat-card glass" key={label}><span>{label}</span><strong>{value}</strong></section>)}</div><section className="chart-card glass"><h2>Spending Categories</h2>{bars.map(([label, width]) => <div className="bar-row" key={label}><span>{label}</span><div><b style={{ width: `${width}%` }} /></div></div>)}</section></main>;
+  return <main className="dashboard-shell single"><PageHeader title="Analytics" />{false && <AnalyticsSkeleton />}<div className="analytics-grid">{stats.map(([label, value]) => <section className="stat-card glass" key={label}><span>{label}</span><strong>{value}</strong></section>)}</div><section className="chart-card glass"><h2>Spending Categories</h2>{bars.map(([label, width]) => <div className="bar-row" key={label}><span>{label}</span><div><b style={{ width: `${width}%` }} /></div></div>)}</section></main>;
 }
 
 function ProfileView() {
-  return <main className="dashboard-shell single profile-shell"><PageHeader title="Profile & Settings" /><Suspense fallback={<ProfileViewFallback />}><section className="profile-layout"><ReflectiveCard image={profileImage} name="Wajih Ahmed" role="DevOps Engineer" handle="@wajihahmed269" status="Building Zephyr" project="Phoenix-Ops / Zephyr" github="https://github.com/wajihahmed269" /><MagicBento items={profileSettings} className="profile-bento" /></section></Suspense></main>;
+  return <main className="dashboard-shell single profile-shell"><PageHeader title="Profile & Settings" /><Suspense fallback={<ProfileSkeleton />}><section className="profile-layout"><ReflectiveCard image={profileImage} name="Wajih Ahmed" role="DevOps Engineer" handle="@wajihahmed269" status="Building Zephyr" project="Phoenix-Ops / Zephyr" github="https://github.com/wajihahmed269" /><MagicBento items={profileSettings} className="profile-bento" /></section></Suspense></main>;
 }
 
 function PageHeader({ title }) {

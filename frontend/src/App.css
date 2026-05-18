@@ -1234,6 +1234,32 @@ input {
   text-align: center;
 }
 
+.auth-message,
+.data-status {
+  margin: 0;
+  border: 1px solid rgba(147, 197, 253, 0.16);
+  border-radius: 14px;
+  padding: 10px 12px;
+  color: rgba(191, 219, 254, 0.88);
+  background: rgba(59, 130, 246, 0.08);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.auth-message.error,
+.data-status.error {
+  border-color: rgba(251, 113, 133, 0.22);
+  color: #fb7185;
+  background: rgba(244, 63, 94, 0.08);
+}
+
+.auth-message.success {
+  border-color: rgba(134, 239, 172, 0.2);
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.08);
+}
+
 @keyframes authBackdropIn {
   from {
     opacity: 0;
@@ -2271,6 +2297,12 @@ input {
   justify-self: end;
   color: #ffffff;
   background: linear-gradient(135deg, rgba(37, 99, 235, 0.62), rgba(139, 92, 246, 0.62));
+}
+
+.chat-bubble.error {
+  border: 1px solid rgba(251, 113, 133, 0.2);
+  color: #fecdd3;
+  background: rgba(244, 63, 94, 0.09);
 }
 
 .ai-form,

@@ -1,0 +1,147 @@
+.reflective-card-container {
+  --reflect-x: 50%;
+  --reflect-y: 18%;
+  --reflect-rotate-x: 0deg;
+  --reflect-rotate-y: 0deg;
+  position: relative;
+  width: min(360px, 100%);
+  min-height: 520px;
+  padding: 18px;
+  border-radius: 30px;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at var(--reflect-x) var(--reflect-y), rgba(147, 197, 253, 0.22), transparent 26%),
+    linear-gradient(145deg, rgba(18, 21, 34, 0.92), rgba(2, 2, 3, 0.96));
+  box-shadow: 0 34px 110px rgba(0, 0, 0, 0.58);
+  transform: perspective(900px) rotateX(var(--reflect-rotate-x)) rotateY(var(--reflect-rotate-y));
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+
+.reflective-card-container::before,
+.reflective-card-container::after,
+.reflective-edge {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.reflective-card-container::before {
+  z-index: 2;
+  background:
+    linear-gradient(115deg, transparent 16%, rgba(255, 255, 255, 0.16) 36%, transparent 54%),
+    radial-gradient(circle at var(--reflect-x) var(--reflect-y), rgba(255, 255, 255, 0.2), transparent 34%);
+  mix-blend-mode: screen;
+  opacity: 0.62;
+}
+
+.reflective-card-container::after {
+  z-index: 1;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.16) 0.7px, transparent 0.7px);
+  background-size: 12px 12px;
+  opacity: 0.08;
+}
+
+.reflective-edge {
+  z-index: 3;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.78), rgba(168, 85, 247, 0.5), rgba(255, 255, 255, 0.12));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.reflective-card-container:hover {
+  box-shadow: 0 40px 130px rgba(0, 0, 0, 0.66), 0 0 44px rgba(99, 102, 241, 0.14);
+}
+
+.reflective-image-shell {
+  position: relative;
+  z-index: 1;
+  height: 285px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.1), rgba(2, 2, 3, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.reflective-image-shell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 22%;
+  display: block;
+  filter: saturate(0.95) contrast(1.04);
+}
+
+.reflective-content {
+  position: relative;
+  z-index: 4;
+  min-height: 185px;
+  padding: 22px 4px 2px;
+  display: grid;
+  gap: 18px;
+  color: #f8fafc;
+}
+
+.reflective-kicker {
+  margin: 0 0 8px;
+  color: rgba(147, 197, 253, 0.72);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+}
+
+.reflective-content h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.7rem;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.reflective-content span,
+.reflective-meta p {
+  color: rgba(226, 232, 240, 0.64);
+}
+
+.reflective-content span {
+  display: block;
+  margin-top: 8px;
+  font-weight: 700;
+}
+
+.reflective-meta {
+  display: grid;
+  gap: 6px;
+}
+
+.reflective-meta p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.reflective-content a {
+  width: fit-content;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: #ffffff;
+  text-decoration: none;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.82), rgba(124, 58, 237, 0.78));
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+@media (max-width: 520px) {
+  .reflective-card-container {
+    min-height: 478px;
+  }
+
+  .reflective-image-shell {
+    height: 245px;
+  }
+}

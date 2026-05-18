@@ -1,0 +1,153 @@
+.chroma-grid {
+  position: relative;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.chroma-card {
+  --card-border: rgba(96, 165, 250, 0.38);
+  --card-gradient: linear-gradient(145deg, rgba(37, 99, 235, 0.18), rgba(2, 2, 3, 0.76));
+  position: relative;
+  min-height: 246px;
+  padding: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025)),
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--card-border), transparent 36%), transparent 34%),
+    rgba(7, 9, 16, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 26px 84px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(22px) saturate(1.12);
+  transition:
+    transform 190ms ease,
+    border-color 190ms ease,
+    box-shadow 190ms ease,
+    background 190ms ease;
+}
+
+.chroma-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12), transparent 34%),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.14), transparent 40%);
+  opacity: 0.42;
+  transition: opacity 190ms ease;
+}
+
+.chroma-card::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 23px;
+  pointer-events: none;
+  background: var(--card-gradient);
+  opacity: 0.34;
+  mix-blend-mode: screen;
+}
+
+.chroma-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--card-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 32px 100px rgba(0, 0, 0, 0.38),
+    0 0 34px color-mix(in srgb, var(--card-border), transparent 82%);
+}
+
+.chroma-card:hover::before {
+  opacity: 0.72;
+}
+
+.chroma-card-top,
+.chroma-info,
+.chroma-tools {
+  position: relative;
+  z-index: 1;
+}
+
+.chroma-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 42px;
+}
+
+.chroma-card-top span {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.chroma-card-top small {
+  color: rgba(226, 232, 240, 0.5);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.chroma-info h3 {
+  margin: 0 0 10px;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.chroma-info p {
+  min-height: 45px;
+  margin: 0 0 18px;
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.chroma-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chroma-tools span {
+  padding: 7px 11px;
+  border-radius: 999px;
+  color: rgba(241, 245, 249, 0.78);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+@media (max-width: 1024px) {
+  .chroma-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .chroma-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chroma-card {
+    min-height: auto;
+  }
+}

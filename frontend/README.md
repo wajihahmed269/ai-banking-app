@@ -1,53 +1,16 @@
-# Zephyr React Frontend
+# React + Vite
 
-React frontend scaffold for the banking application.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Install
+Currently, two official plugins are available:
 
-```bash
-npm install
-```
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-## Run Locally
+## React Compiler
 
-```bash
-npm run dev
-```
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-The Vite dev server proxies `/api` requests to `http://localhost:8080`.
+## Expanding the ESLint configuration
 
-## Build
-
-```bash
-npm run build
-```
-
-## Container
-
-Build the production image from this directory:
-
-```bash
-docker build -t wajihahmed269/ai-banking-frontend:latest .
-```
-
-Run the container locally:
-
-```bash
-docker run --rm -p 8081:80 wajihahmed269/ai-banking-frontend:latest
-```
-
-Then open `http://localhost:8081`.
-
-## Kubernetes
-
-Apply the frontend Deployment and Service from the repository root:
-
-```bash
-kubectl apply -f k8s/frontend.yaml
-```
-
-Check rollout status:
-
-```bash
-kubectl rollout status deployment/banking-frontend
-```
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.

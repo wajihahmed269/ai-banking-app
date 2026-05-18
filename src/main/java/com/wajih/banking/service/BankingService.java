@@ -1,5 +1,6 @@
 package com.wajih.banking.service;
 
+import com.wajih.banking.cache.AccountCacheService;
 import com.wajih.banking.entity.Transaction;
 import com.wajih.banking.entity.User;
 import com.wajih.banking.repository.TransactionRepository;
@@ -17,6 +18,7 @@ public class BankingService {
 
     private final UserRepository userRepository;
     private final TransactionRepository transactionRepository;
+    private final AccountCacheService accountCacheService;
 
     public User findByUsername(String username) {
         return userRepository.findByUsername(username)
@@ -24,7 +26,7 @@ public class BankingService {
     }
 
     public Double getBalance(String username) {
-        return findByUsername(username).getBalance();
+        return accountCacheService.getBalance(username, () -> findByUsername(username).getBalance());
     }
 
     @Transactional
@@ -43,7 +45,10 @@ public class BankingService {
         tx.setSource(source);
         tx.setNote(note);
         tx.setReference(UUID.randomUUID().toString());
-        return transactionRepository.save(tx);
+        Transaction saved = transactionRepository.save(tx);
+        // Money mutations must invalidate short-lived account reads immediately.
+        accountCacheService.evictAccount(username);
+        return saved;
     }
 
     @Transactional
@@ -71,7 +76,10 @@ public class BankingService {
         tx.setCategory(category);
         tx.setNote(note);
         tx.setReference(UUID.randomUUID().toString());
-        return transactionRepository.save(tx);
+        Transaction saved = transactionRepository.save(tx);
+        // Money mutations must invalidate short-lived account reads immediately.
+        accountCacheService.evictAccount(username);
+        return saved;
     }
 
     @Transactional
@@ -108,7 +116,10 @@ public class BankingService {
         tx.setPaymentMethod(paymentMethod);
         tx.setNote(note);
         tx.setReference(UUID.randomUUID().toString());
-        return transactionRepository.save(tx);
+        Transaction saved = transactionRepository.save(tx);
+        // Money mutations must invalidate short-lived account reads immediately.
+        accountCacheService.evictAccount(username);
+        return saved;
     }
 
     @Transactional
@@ -155,6 +166,9 @@ public class BankingService {
         txIn.setReference(reference);
         transactionRepository.save(txIn);
 
+        // Transfer touches both accounts, so both balance and transaction caches are cleared.
+        accountCacheService.evictAccount(fromUsername);
+        accountCacheService.evictAccount(toUsername);
         return savedOut;
     }
 
@@ -164,8 +178,10 @@ public class BankingService {
     }
 
     public List<Transaction> getTransactions(String username) {
-        User user = findByUsername(username);
-        return transactionRepository.findByUserOrderByTimestampDesc(user);
+        return accountCacheService.getTransactions(username, () -> {
+            User user = findByUsername(username);
+            return transactionRepository.findByUserOrderByTimestampDesc(user);
+        });
     }
 
     private Transaction newTransaction(User user, String type, Double amount) {

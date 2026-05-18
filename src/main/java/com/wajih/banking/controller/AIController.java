@@ -1,10 +1,15 @@
 package com.wajih.banking.controller;
 
+import com.wajih.banking.dto.AiChatRequest;
+import com.wajih.banking.dto.ApiResponse;
 import com.wajih.banking.entity.Transaction;
 import com.wajih.banking.service.AIService;
 import com.wajih.banking.service.BankingService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,11 +25,16 @@ public class AIController {
     private final BankingService bankingService;
 
     @PostMapping("/chat/{username}")
-    public ResponseEntity<Map<String, String>> chat(
+    public ResponseEntity<ApiResponse<Map<String, String>>> chat(
             @PathVariable String username,
-            @RequestBody Map<String, String> body) {
+            @Valid @RequestBody AiChatRequest request,
+            Authentication authentication) {
 
-        String message = body.get("message");
+        if (authentication == null || !username.equals(authentication.getName())) {
+            throw new AccessDeniedException("You cannot access another user's assistant context");
+        }
+
+        String message = request.getMessage();
         double balance = bankingService.getBalance(username);
         List<Transaction> transactions = bankingService.getTransactions(username);
 
@@ -32,6 +42,6 @@ public class AIController {
 
         Map<String, String> res = new HashMap<>();
         res.put("response", response);
-        return ResponseEntity.ok(res);
+        return ResponseEntity.ok(ApiResponse.success("AI response generated", res));
     }
 }

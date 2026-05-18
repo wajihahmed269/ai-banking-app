@@ -181,7 +181,10 @@ const transactionDate = (timestamp) => {
 const mapBackendTransaction = (transaction) => {
   const rawType = transaction.type || 'Transaction';
   const normalizedType = rawType.toLowerCase();
-  const isDebit = normalizedType.includes('withdraw') || normalizedType.includes('out');
+  const isDebit = normalizedType.includes('withdraw')
+    || normalizedType.includes('payment')
+    || normalizedType.includes('out')
+    || (normalizedType.includes('transfer') && transaction.recipient);
   const amount = Math.abs(Number(transaction.amount) || 0) * (isDebit ? -1 : 1);
   const type = normalizedType.includes('deposit') || normalizedType.includes('in')
     ? 'income'
@@ -191,7 +194,7 @@ const mapBackendTransaction = (transaction) => {
 
   return {
     id: transaction.id,
-    name: rawType,
+    name: transaction.biller || transaction.recipient || transaction.source || rawType,
     amount,
     date: transactionDate(transaction.timestamp),
     type,
@@ -502,9 +505,9 @@ export default function App() {
     setTransferSuccess('');
     setTransferLoading(true);
     try {
-      const result = await bankingApi.transfer(username, transferForm.recipient.trim(), amount);
+      const result = await bankingApi.transfer(username, transferForm.recipient.trim(), amount, transferForm.note.trim());
       await refreshAccountData({ allowFallback: false });
-      setTransferSuccess(typeof result === 'string' ? result : 'Transfer successful');
+      setTransferSuccess(result?.reference ? `Transfer successful. Reference ${result.reference}` : 'Transfer successful');
       setTransferForm({ recipient: '', amount: '', note: '' });
     } catch (error) {
       setTransferError(error instanceof Error ? error.message : 'Transfer failed.');
@@ -810,10 +813,10 @@ function QuickPanel({ type, closePanel, currentUser, refreshAccountData, selecte
     setFundingMessage('');
     setPanelLoading(true);
     try {
-      const result = await bankingApi.deposit(username, amount);
+      const result = await bankingApi.deposit(username, amount, selectedFundingSource, addMoneyNote.trim());
       await refreshAccountData({ allowFallback: false });
-      setFundingMessage(`${typeof result === 'string' ? result : 'Deposit successful'} from ${selectedFundingSource}.`);
-      setPaymentToast({ title: 'Deposit successful', message: `${formatUSD(amount)} added to your balance.` });
+      setFundingMessage(`Deposit successful from ${selectedFundingSource}.`);
+      setPaymentToast({ title: 'Deposit successful', message: `${formatUSD(amount)} added to your balance.${result?.reference ? ` Ref ${result.reference}.` : ''}` });
       closePanel();
     } catch (error) {
       setAddMoneyError(error instanceof Error ? error.message : 'Deposit failed.');
@@ -845,9 +848,15 @@ function QuickPanel({ type, closePanel, currentUser, refreshAccountData, selecte
     setPanelLoading(true);
     setBillMessage('');
     try {
-      const result = await bankingApi.withdraw(username, selectedBillAmount);
+      const result = await bankingApi.payBill(username, {
+        biller: selectedBill[0],
+        amount: selectedBillAmount,
+        category: selectedBill[1],
+        paymentMethod: 'Bank Balance',
+        note: `${selectedBill[0]} bill payment`,
+      });
       await refreshAccountData({ allowFallback: false });
-      setPaymentToast({ title: 'Payment successful', message: `${selectedBill[0]} paid successfully. ${typeof result === 'string' ? result : ''}`.trim() });
+      setPaymentToast({ title: 'Payment successful', message: `${selectedBill[0]} paid successfully.${result?.reference ? ` Ref ${result.reference}.` : ''}` });
       setPaymentConfirmOpen(false);
       closePanel();
     } catch (error) {
@@ -858,11 +867,11 @@ function QuickPanel({ type, closePanel, currentUser, refreshAccountData, selecte
     }
   }, [closePanel, currentUser, refreshAccountData, selectedBill, selectedBillAmount, setBillMessage, setPaymentConfirmOpen, setPaymentToast]);
 
-  return <div className="quick-panel-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !panelLoading) closePanel(); }}><section className="quick-panel glass"><button className="auth-close" onClick={closePanel} disabled={panelLoading} type="button" aria-label="Close panel">x</button><div className="panel-hero"><p>{type === 'investment' ? 'Prototype panel' : 'Connected to Spring API'}</p><h2>{title}</h2><span>{subtitle}</span></div>{type === 'addMoney' && <><div className="step-indicator"><span className={addMoneyStep === 'source' ? 'active' : ''}>1 Source</span><span className={addMoneyStep === 'details' ? 'active' : ''}>2 Amount</span></div>{addMoneyStep === 'source' ? <><div className="option-grid">{fundingSources.map(([name, description, icon]) => <button className={selectedFundingSource === name ? 'option-card selected' : 'option-card'} key={name} onClick={() => { setSelectedFundingSource(name); setFundingMessage(''); setAddMoneyError(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{description}</small></button>)}</div><button className="btn btn-primary full-width panel-action" disabled={!selectedFundingSource} onClick={continueAddMoney} type="button">Continue</button></> : <><div className="add-money-details"><h3>Add from {selectedFundingSource}</h3><p>Enter the amount you want to add to your Zephyr balance.</p><label>Amount<input value={addMoneyAmount} onChange={(event) => { setAddMoneyAmount(event.target.value); setAddMoneyError(''); }} inputMode="decimal" placeholder="0.00" disabled={panelLoading} /></label><label>Optional note/reference<textarea value={addMoneyNote} onChange={(event) => setAddMoneyNote(event.target.value)} placeholder="Not sent: backend deposit accepts amount only" disabled={panelLoading} /></label></div>{addMoneyError && <p className="panel-message error">{addMoneyError}</p>}{fundingMessage && <p className="panel-message">{fundingMessage}</p>}<div className="panel-actions split"><button className="btn btn-secondary" disabled={panelLoading} onClick={() => { setAddMoneyStep('source'); setAddMoneyError(''); setFundingMessage(''); }} type="button">Back</button><button className="btn btn-primary" disabled={panelLoading} onClick={confirmAddMoney} type="button">{panelLoading ? 'Depositing...' : 'Confirm Add Money'}</button></div></>}</>}{type === 'payBills' && <><div className="filter-tabs panel-filters">{['All', 'Subscriptions', 'Shopping', 'Cloud', 'Crypto', 'Utilities'].map((category) => <button className={billCategory === category ? 'active' : ''} key={category} onClick={() => { setBillCategory(category); setSelectedBiller(''); setBillMessage(''); setPaymentConfirmOpen(false); }} type="button">{category}</button>)}</div><div className="biller-grid">{visibleBillers.map(([name, category, amount, icon]) => <button className={selectedBiller === name ? 'biller-card selected' : 'biller-card'} key={name} onClick={() => { setSelectedBiller(name); setBillMessage(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{category}</small><b>{amount}</b></button>)}</div>{billMessage && <p className="panel-message error">{billMessage}</p>}<button className="btn btn-primary full-width panel-action" disabled={panelLoading} onClick={openPaymentConfirmation} type="button">{panelLoading ? 'Paying...' : 'Pay Selected'}</button>{paymentConfirmOpen && selectedBill && <PaymentConfirmModal billerName={selectedBill[0]} amount={selectedBillAmount} loading={panelLoading} onCancel={() => setPaymentConfirmOpen(false)} onConfirm={confirmPayment} />}</>}{type === 'investment' && <><div className="investment-panel-summary"><strong>$12,840.22</strong><span>+2.4% today</span></div><MiniChart large /><div className="watchlist-rows">{watchlist.map(([symbol, change]) => <div key={symbol}><span>{symbol}</span><b className={change.startsWith('+') ? 'positive' : 'negative'}>{change}</b><button disabled type="button">Prototype</button></div>)}</div><p className="panel-message">Market data is mocked in this UI sandbox.</p></>}</section></div>;
+  return <div className="quick-panel-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !panelLoading) closePanel(); }}><section className="quick-panel glass"><button className="auth-close" onClick={closePanel} disabled={panelLoading} type="button" aria-label="Close panel">x</button><div className="panel-hero"><p>{type === 'investment' ? 'Prototype panel' : 'Connected to Spring API'}</p><h2>{title}</h2><span>{subtitle}</span></div>{type === 'addMoney' && <><div className="step-indicator"><span className={addMoneyStep === 'source' ? 'active' : ''}>1 Source</span><span className={addMoneyStep === 'details' ? 'active' : ''}>2 Amount</span></div>{addMoneyStep === 'source' ? <><div className="option-grid">{fundingSources.map(([name, description, icon]) => <button className={selectedFundingSource === name ? 'option-card selected' : 'option-card'} key={name} onClick={() => { setSelectedFundingSource(name); setFundingMessage(''); setAddMoneyError(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{description}</small></button>)}</div><button className="btn btn-primary full-width panel-action" disabled={!selectedFundingSource} onClick={continueAddMoney} type="button">Continue</button></> : <><div className="add-money-details"><h3>Add from {selectedFundingSource}</h3><p>Enter the amount you want to add to your Zephyr balance.</p><label>Amount<input value={addMoneyAmount} onChange={(event) => { setAddMoneyAmount(event.target.value); setAddMoneyError(''); }} inputMode="decimal" placeholder="0.00" disabled={panelLoading} /></label><label>Optional note/reference<textarea value={addMoneyNote} onChange={(event) => setAddMoneyNote(event.target.value)} placeholder="Reference note" disabled={panelLoading} /></label></div>{addMoneyError && <p className="panel-message error">{addMoneyError}</p>}{fundingMessage && <p className="panel-message">{fundingMessage}</p>}<div className="panel-actions split"><button className="btn btn-secondary" disabled={panelLoading} onClick={() => { setAddMoneyStep('source'); setAddMoneyError(''); setFundingMessage(''); }} type="button">Back</button><button className="btn btn-primary" disabled={panelLoading} onClick={confirmAddMoney} type="button">{panelLoading ? 'Depositing...' : 'Confirm Add Money'}</button></div></>}</>}{type === 'payBills' && <><div className="filter-tabs panel-filters">{['All', 'Subscriptions', 'Shopping', 'Cloud', 'Crypto', 'Utilities'].map((category) => <button className={billCategory === category ? 'active' : ''} key={category} onClick={() => { setBillCategory(category); setSelectedBiller(''); setBillMessage(''); setPaymentConfirmOpen(false); }} type="button">{category}</button>)}</div><div className="biller-grid">{visibleBillers.map(([name, category, amount, icon]) => <button className={selectedBiller === name ? 'biller-card selected' : 'biller-card'} key={name} onClick={() => { setSelectedBiller(name); setBillMessage(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{category}</small><b>{amount}</b></button>)}</div>{billMessage && <p className="panel-message error">{billMessage}</p>}<button className="btn btn-primary full-width panel-action" disabled={panelLoading} onClick={openPaymentConfirmation} type="button">{panelLoading ? 'Paying...' : 'Pay Selected'}</button>{paymentConfirmOpen && selectedBill && <PaymentConfirmModal billerName={selectedBill[0]} amount={selectedBillAmount} loading={panelLoading} onCancel={() => setPaymentConfirmOpen(false)} onConfirm={confirmPayment} />}</>}{type === 'investment' && <><div className="investment-panel-summary"><strong>$12,840.22</strong><span>+2.4% today</span></div><MiniChart large /><div className="watchlist-rows">{watchlist.map(([symbol, change]) => <div key={symbol}><span>{symbol}</span><b className={change.startsWith('+') ? 'positive' : 'negative'}>{change}</b><button disabled type="button">Prototype</button></div>)}</div><p className="panel-message">Market data is mocked in this UI sandbox.</p></>}</section></div>;
 }
 
 function PaymentConfirmModal({ billerName, amount, loading, onCancel, onConfirm }) {
-  return <div className="payment-confirm-layer" role="presentation"><section className="payment-confirm-modal glass" role="dialog" aria-modal="true" aria-labelledby="payment-confirm-title"><h2 id="payment-confirm-title">Confirm payment</h2><p>You are about to pay {billerName}.</p><strong>{formatUSD(amount)}</strong><span>Backend payment uses the withdrawal endpoint.</span><div className="panel-actions"><button className="btn btn-secondary" disabled={loading} onClick={onCancel} type="button">Cancel</button><button className="btn btn-primary" disabled={loading} onClick={onConfirm} type="button">{loading ? 'Confirming...' : 'Confirm Payment'}</button></div></section></div>;
+  return <div className="payment-confirm-layer" role="presentation"><section className="payment-confirm-modal glass" role="dialog" aria-modal="true" aria-labelledby="payment-confirm-title"><h2 id="payment-confirm-title">Confirm payment</h2><p>You are about to pay {billerName}.</p><strong>{formatUSD(amount)}</strong><span>Backend payment endpoint will record biller details.</span><div className="panel-actions"><button className="btn btn-secondary" disabled={loading} onClick={onCancel} type="button">Cancel</button><button className="btn btn-primary" disabled={loading} onClick={onConfirm} type="button">{loading ? 'Confirming...' : 'Confirm Payment'}</button></div></section></div>;
 }
 
 function TransactionsView({ transactionSearch, setTransactionSearch, transactionFilter, setTransactionFilter, filteredTransactions, transactionsLoading, transactionsError, usingFallbackData }) {
@@ -871,7 +880,7 @@ function TransactionsView({ transactionSearch, setTransactionSearch, transaction
 
 function TransferView({ transferForm, setTransferForm, transferError, transferSuccess, transferLoading, submitTransfer }) {
   const updateField = (field, value) => setTransferForm((current) => ({ ...current, [field]: value }));
-  return <main className="dashboard-shell single"><PageHeader title="Send Money" /><form className="transfer-card glass" onSubmit={submitTransfer}><label>Recipient<input value={transferForm.recipient} onChange={(event) => updateField('recipient', event.target.value)} disabled={transferLoading} /></label><label>Amount<input value={transferForm.amount} onChange={(event) => updateField('amount', event.target.value)} inputMode="decimal" disabled={transferLoading} /></label><label>Note<textarea value={transferForm.note} onChange={(event) => updateField('note', event.target.value)} placeholder="Not sent: backend transfer accepts recipient and amount only" disabled={transferLoading} /></label>{transferError && <p className="form-message error">{transferError}</p>}{transferSuccess && <p className="form-message success">{transferSuccess}</p>}<button className="btn btn-primary full-width" disabled={transferLoading} type="submit">{transferLoading ? 'Sending...' : 'Review Transfer'}</button></form></main>;
+  return <main className="dashboard-shell single"><PageHeader title="Send Money" /><form className="transfer-card glass" onSubmit={submitTransfer}><label>Recipient<input value={transferForm.recipient} onChange={(event) => updateField('recipient', event.target.value)} disabled={transferLoading} /></label><label>Amount<input value={transferForm.amount} onChange={(event) => updateField('amount', event.target.value)} inputMode="decimal" disabled={transferLoading} /></label><label>Note<textarea value={transferForm.note} onChange={(event) => updateField('note', event.target.value)} placeholder="Reference note" disabled={transferLoading} /></label>{transferError && <p className="form-message error">{transferError}</p>}{transferSuccess && <p className="form-message success">{transferSuccess}</p>}<button className="btn btn-primary full-width" disabled={transferLoading} type="submit">{transferLoading ? 'Sending...' : 'Review Transfer'}</button></form></main>;
 }
 
 function AnalyticsView() {

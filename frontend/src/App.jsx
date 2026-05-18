@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { chat as sendAiChat } from './api/aiApi';
 import * as authApi from './api/authApi';
@@ -148,6 +148,14 @@ const notifications = [
 ];
 
 const initialBalance = 24580.9;
+const TOAST_TIMEOUT = 3600;
+const defaultAiMessages = [{ role: 'assistant', text: 'Sign in to ask Zephyr about your live account activity.' }];
+const welcomeAiMessages = [{ role: 'assistant', text: 'Welcome back. I can now review your live Zephyr account activity.' }];
+const initialNotificationItems = notifications.map((notification, index) => ({
+  ...notification,
+  id: `notification-${index + 1}`,
+  read: index > 0,
+}));
 
 const formatUSD = (amount) => amount.toLocaleString('en-US', {
   style: 'currency',
@@ -170,6 +178,58 @@ const formatMoney = (amount) => {
 };
 
 const getSessionUsername = (user) => user?.username || user?.email || '';
+
+const getTransactionReference = (transaction) => {
+  if (transaction?.reference) return transaction.reference;
+  if (transaction?.id) return `TX-${transaction.id}`;
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const suffix = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `ZEPH-${stamp}-${suffix}`;
+};
+
+const buildReceipt = ({ transaction, type, amount, recipient, biller, note, category, paymentMethod }) => ({
+  reference: getTransactionReference(transaction),
+  type,
+  amount,
+  recipient: recipient || transaction?.recipient || '',
+  biller: biller || transaction?.biller || '',
+  note: note || transaction?.note || '',
+  category: category || transaction?.category || '',
+  paymentMethod: paymentMethod || transaction?.paymentMethod || '',
+  status: 'Completed',
+  date: transaction?.timestamp ? new Date(transaction.timestamp) : new Date(),
+});
+
+const schedulePrefetch = (loader) => {
+  if (typeof window === 'undefined') return;
+  const run = () => {
+    try {
+      loader().catch(() => {});
+    } catch {
+      // Prefetching is opportunistic and should never affect the visible UI.
+    }
+  };
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(run, { timeout: 1400 });
+    return;
+  }
+  window.setTimeout(run, 220);
+};
+
+const prefetchAboutChunks = () => schedulePrefetch(() => Promise.all([
+  import('./components/backgrounds/GridScan'),
+  import('./components/cards/ProfileCard'),
+  import('./components/cards/ChromaGrid'),
+]));
+
+const prefetchProfileChunks = () => schedulePrefetch(() => Promise.all([
+  import('./components/cards/ReflectiveCard'),
+  import('./components/cards/MagicBento'),
+]));
+
+const prefetchDashboardChunks = () => {
+  prefetchProfileChunks();
+};
 
 const transactionDate = (timestamp) => {
   if (!timestamp) return 'Recent';
@@ -324,6 +384,43 @@ function MiniIcon({ type }) {
   </svg>;
 }
 
+class SectionErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  retry = () => {
+    this.setState({ hasError: false });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return <section className="section-error glass" role="alert"><h2>Something went wrong</h2><p>Reload this section</p><button className="btn btn-secondary" onClick={this.retry} type="button">Retry</button></section>;
+    }
+    return this.props.children;
+  }
+}
+
+function EmptyState({ title, message, actionLabel, onAction }) {
+  return <div className="empty-state"><span className="empty-mark" aria-hidden="true">Z</span><h3>{title}</h3><p>{message}</p>{actionLabel && onAction && <button className="btn btn-secondary" onClick={onAction} type="button">{actionLabel}</button>}</div>;
+}
+
+function ToastViewport({ toasts, onClose }) {
+  return <div className="toast-viewport" aria-live="polite" aria-label="Notifications">{toasts.map((toast) => <article className={`toast-item ${toast.type}`} key={toast.id}><span className="toast-icon" aria-hidden="true">{toast.type === 'success' ? 'OK' : toast.type === 'error' ? '!' : toast.type === 'warning' ? '?' : 'i'}</span><div><strong>{toast.title}</strong>{toast.message && <p>{toast.message}</p>}</div><button onClick={() => onClose(toast.id)} type="button" aria-label="Dismiss notification">x</button></article>)}</div>;
+}
+
+function ReceiptModal({ receipt, onClose, onCopy }) {
+  if (!receipt) return null;
+  const target = receipt.type === 'Payment' ? receipt.biller : receipt.recipient;
+  const date = receipt.date.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+  return <div className="receipt-overlay" role="presentation"><section className="receipt-modal glass" role="dialog" aria-modal="true" aria-labelledby="receipt-title"><button className="auth-close" onClick={onClose} type="button" aria-label="Close receipt">x</button><p className="receipt-kicker">Receipt</p><h2 id="receipt-title">{receipt.type} completed</h2><div className="receipt-amount">{formatUSD(receipt.amount)}</div><div className="receipt-grid"><span>Reference</span><strong>{receipt.reference}</strong><span>Type</span><strong>{receipt.type}</strong><span>{receipt.type === 'Payment' ? 'Biller' : 'Recipient'}</span><strong>{target || 'Recorded'}</strong><span>Date</span><strong>{date}</strong><span>Status</span><strong>{receipt.status}</strong>{receipt.category && <><span>Category</span><strong>{receipt.category}</strong></>}{receipt.paymentMethod && <><span>Payment method</span><strong>{receipt.paymentMethod}</strong></>}{receipt.note && <><span>Note</span><strong>{receipt.note}</strong></>}</div><div className="receipt-actions"><button className="btn btn-secondary" onClick={() => onCopy(receipt.reference)} type="button">Copy reference</button><button className="btn btn-primary" onClick={onClose} type="button">Close</button></div></section></div>;
+}
+
 export default function App() {
   const [view, setView] = useState('landing');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -331,13 +428,14 @@ export default function App() {
   const [showBalance, setShowBalance] = useState(false);
   const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [transactionSearch, setTransactionSearch] = useState('');
+  const [debouncedTransactionSearch, setDebouncedTransactionSearch] = useState('');
   const [transactionFilter, setTransactionFilter] = useState('all');
   const [transferForm, setTransferForm] = useState({ recipient: '', amount: '', note: '' });
   const [transferError, setTransferError] = useState('');
   const [transferSuccess, setTransferSuccess] = useState('');
   const [transferLoading, setTransferLoading] = useState(false);
   const [aiInput, setAiInput] = useState('');
-  const [aiMessages, setAiMessages] = useState([{ role: 'assistant', text: 'Sign in to ask Zephyr about your live account activity.' }]);
+  const [aiMessages, setAiMessages] = useState(defaultAiMessages);
   const [aiLoading, setAiLoading] = useState(false);
   const [quickPanel, setQuickPanel] = useState(null);
   const [selectedFundingSource, setSelectedFundingSource] = useState('');
@@ -354,11 +452,32 @@ export default function App() {
   const [transactionsError, setTransactionsError] = useState('');
   const [usingFallbackData, setUsingFallbackData] = useState(false);
   const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
-  const [paymentToast, setPaymentToast] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  const [receipt, setReceipt] = useState(null);
+  const [notificationItems, setNotificationItems] = useState(initialNotificationItems);
   const [addMoneyStep, setAddMoneyStep] = useState('source');
   const [addMoneyAmount, setAddMoneyAmount] = useState('');
   const [addMoneyNote, setAddMoneyNote] = useState('');
   const [addMoneyError, setAddMoneyError] = useState('');
+
+  const removeToast = useCallback((id) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
+  const addToast = useCallback(({ type = 'info', title, message }) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setToasts((current) => [...current, { id, type, title, message }].slice(-5));
+    window.setTimeout(() => removeToast(id), TOAST_TIMEOUT);
+  }, [removeToast]);
+
+  const copyReceiptReference = useCallback(async (reference) => {
+    try {
+      await navigator.clipboard.writeText(reference);
+      addToast({ type: 'success', title: 'Reference copied', message: reference });
+    } catch {
+      addToast({ type: 'error', title: 'Copy failed', message: 'Clipboard access was not available.' });
+    }
+  }, [addToast]);
 
   const openAuth = useCallback((mode = 'signin') => {
     setAuthMode(mode);
@@ -369,7 +488,7 @@ export default function App() {
     closeAuth();
     if (user) {
       setCurrentUserState(user);
-      setAiMessages([{ role: 'assistant', text: 'Welcome back. I can now review your live Zephyr account activity.' }]);
+      setAiMessages(welcomeAiMessages);
     }
     setView('dashboard');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -383,6 +502,7 @@ export default function App() {
     setBalance(0);
     setRecentTransactions([]);
     setUsingFallbackData(false);
+    setAiMessages(defaultAiMessages);
     setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
   }, []);
 
@@ -444,19 +564,29 @@ export default function App() {
     }
   }, [currentUser]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedTransactionSearch(transactionSearch), 300);
+    return () => window.clearTimeout(timer);
+  }, [transactionSearch]);
+
   const filteredTransactions = useMemo(() => {
-    const query = transactionSearch.trim().toLowerCase();
+    const query = debouncedTransactionSearch.trim().toLowerCase();
     return recentTransactions.filter((transaction) => {
       const matchesSearch = transaction.name.toLowerCase().includes(query);
       const matchesFilter = transactionFilter === 'all' || transaction.type === transactionFilter;
       return matchesSearch && matchesFilter;
     });
-  }, [recentTransactions, transactionSearch, transactionFilter]);
+  }, [debouncedTransactionSearch, recentTransactions, transactionFilter]);
 
   useEffect(() => {
     if (view === 'landing' || !currentUser) return;
     refreshAccountData();
   }, [currentUser, refreshAccountData, view]);
+
+  useEffect(() => {
+    if (view === 'landing') return;
+    prefetchDashboardChunks();
+  }, [view]);
 
   const sendAiMessage = useCallback(async (event) => {
     event.preventDefault();
@@ -477,10 +607,11 @@ export default function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI failed. Please try again.';
       setAiMessages((current) => [...current, { role: 'assistant', text: message, error: true }]);
+      addToast({ type: 'error', title: 'AI assistant failed', message });
     } finally {
       setAiLoading(false);
     }
-  }, [aiInput, currentUser]);
+  }, [addToast, aiInput, currentUser]);
 
   const submitTransfer = useCallback(async (event) => {
     event.preventDefault();
@@ -507,14 +638,51 @@ export default function App() {
     try {
       const result = await bankingApi.transfer(username, transferForm.recipient.trim(), amount, transferForm.note.trim());
       await refreshAccountData({ allowFallback: false });
-      setTransferSuccess(result?.reference ? `Transfer successful. Reference ${result.reference}` : 'Transfer successful');
+      const nextReceipt = buildReceipt({ transaction: result, type: 'Transfer', amount, recipient: transferForm.recipient.trim(), note: transferForm.note.trim() });
+      setReceipt(nextReceipt);
+      setTransferSuccess(`Transfer successful. Reference ${nextReceipt.reference}`);
+      addToast({ type: 'success', title: 'Transfer completed', message: `${formatUSD(amount)} sent to ${transferForm.recipient.trim()}.` });
       setTransferForm({ recipient: '', amount: '', note: '' });
     } catch (error) {
-      setTransferError(error instanceof Error ? error.message : 'Transfer failed.');
+      const message = error instanceof Error ? error.message : 'Transfer failed.';
+      setTransferError(message);
+      addToast({ type: 'error', title: 'Transfer failed', message });
     } finally {
       setTransferLoading(false);
     }
-  }, [currentUser, refreshAccountData, setTransferForm, transferForm.amount, transferForm.recipient]);
+  }, [addToast, currentUser, refreshAccountData, setTransferForm, transferForm.amount, transferForm.note, transferForm.recipient]);
+
+  const resetDemoView = useCallback(() => {
+    setAiMessages(currentUser ? welcomeAiMessages : defaultAiMessages);
+    setNotificationItems(initialNotificationItems);
+    setTransactionSearch('');
+    setDebouncedTransactionSearch('');
+    setTransactionFilter('all');
+    setReceipt(null);
+    setQuickPanel(null);
+    setPaymentConfirmOpen(false);
+    setTransferError('');
+    setTransferSuccess('');
+    setBillMessage('');
+    resetAddMoneyFlow();
+    if (currentUser) refreshAccountData({ allowFallback: false });
+    addToast({ type: 'info', title: 'Demo view reset', message: 'Presentation-only UI state was restored.' });
+  }, [addToast, currentUser, refreshAccountData, resetAddMoneyFlow]);
+
+  const markAllNotificationsRead = useCallback(() => {
+    setNotificationItems((current) => current.map((item) => ({ ...item, read: true })));
+    addToast({ type: 'success', title: 'Notifications updated', message: 'All notifications marked as read.' });
+  }, [addToast]);
+
+  const clearReadNotifications = useCallback(() => {
+    setNotificationItems((current) => current.filter((item) => !item.read));
+    addToast({ type: 'info', title: 'Notifications cleared', message: 'Read notifications were removed.' });
+  }, [addToast]);
+
+  const toggleNotificationRead = useCallback((id) => {
+    setNotificationItems((current) => current.map((item) => (item.id === id ? { ...item, read: !item.read } : item)));
+    addToast({ type: 'info', title: 'Notification updated', message: 'Read state changed.' });
+  }, [addToast]);
 
   useEffect(() => {
     if (!isAuthOpen) return undefined;
@@ -550,10 +718,11 @@ export default function App() {
   }, [notificationOpen]);
 
   return <>
-    {view === 'landing' ? <LandingView openAuth={openAuth} /> : <DashboardView view={view} setView={setView} goLanding={goLanding} showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} balanceLoading={balanceLoading} balanceError={balanceError} recentTransactions={recentTransactions} transactionsLoading={transactionsLoading} transactionsError={transactionsError} usingFallbackData={usingFallbackData} transactionSearch={transactionSearch} setTransactionSearch={setTransactionSearch} transactionFilter={transactionFilter} setTransactionFilter={setTransactionFilter} filteredTransactions={filteredTransactions} transferForm={transferForm} setTransferForm={setTransferForm} transferError={transferError} transferSuccess={transferSuccess} transferLoading={transferLoading} submitTransfer={submitTransfer} aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} aiLoading={aiLoading} sendAiMessage={sendAiMessage} setQuickPanel={openQuickPanel} notificationOpen={notificationOpen} setNotificationOpen={setNotificationOpen} />}
-    {isAuthOpen && <AuthModal authMode={authMode} setAuthMode={setAuthMode} closeAuth={closeAuth} enterDashboard={enterDashboard} />}
-    {quickPanel && <QuickPanel type={quickPanel} closePanel={closeQuickPanel} currentUser={currentUser} refreshAccountData={refreshAccountData} selectedFundingSource={selectedFundingSource} setSelectedFundingSource={setSelectedFundingSource} fundingMessage={fundingMessage} setFundingMessage={setFundingMessage} addMoneyStep={addMoneyStep} setAddMoneyStep={setAddMoneyStep} addMoneyAmount={addMoneyAmount} setAddMoneyAmount={setAddMoneyAmount} addMoneyNote={addMoneyNote} setAddMoneyNote={setAddMoneyNote} addMoneyError={addMoneyError} setAddMoneyError={setAddMoneyError} billCategory={billCategory} setBillCategory={setBillCategory} selectedBiller={selectedBiller} setSelectedBiller={setSelectedBiller} billMessage={billMessage} setBillMessage={setBillMessage} paymentConfirmOpen={paymentConfirmOpen} setPaymentConfirmOpen={setPaymentConfirmOpen} setPaymentToast={setPaymentToast} />}
-    {paymentToast && <div className="payment-toast glass"><strong>{paymentToast.title}</strong><span>{paymentToast.message}</span><button onClick={() => setPaymentToast(null)} type="button" aria-label="Dismiss payment message">x</button></div>}
+    {view === 'landing' ? <LandingView openAuth={openAuth} /> : <DashboardView view={view} setView={setView} goLanding={goLanding} showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} balanceLoading={balanceLoading} balanceError={balanceError} recentTransactions={recentTransactions} transactionsLoading={transactionsLoading} transactionsError={transactionsError} usingFallbackData={usingFallbackData} transactionSearch={transactionSearch} setTransactionSearch={setTransactionSearch} transactionFilter={transactionFilter} setTransactionFilter={setTransactionFilter} filteredTransactions={filteredTransactions} transferForm={transferForm} setTransferForm={setTransferForm} transferError={transferError} transferSuccess={transferSuccess} transferLoading={transferLoading} submitTransfer={submitTransfer} aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} aiLoading={aiLoading} sendAiMessage={sendAiMessage} setQuickPanel={openQuickPanel} notificationOpen={notificationOpen} setNotificationOpen={setNotificationOpen} notificationItems={notificationItems} markAllNotificationsRead={markAllNotificationsRead} clearReadNotifications={clearReadNotifications} toggleNotificationRead={toggleNotificationRead} resetDemoView={resetDemoView} addToast={addToast} />}
+    {isAuthOpen && <AuthModal authMode={authMode} setAuthMode={setAuthMode} closeAuth={closeAuth} enterDashboard={enterDashboard} addToast={addToast} />}
+    {quickPanel && <QuickPanel type={quickPanel} closePanel={closeQuickPanel} currentUser={currentUser} refreshAccountData={refreshAccountData} selectedFundingSource={selectedFundingSource} setSelectedFundingSource={setSelectedFundingSource} fundingMessage={fundingMessage} setFundingMessage={setFundingMessage} addMoneyStep={addMoneyStep} setAddMoneyStep={setAddMoneyStep} addMoneyAmount={addMoneyAmount} setAddMoneyAmount={setAddMoneyAmount} addMoneyNote={addMoneyNote} setAddMoneyNote={setAddMoneyNote} addMoneyError={addMoneyError} setAddMoneyError={setAddMoneyError} billCategory={billCategory} setBillCategory={setBillCategory} selectedBiller={selectedBiller} setSelectedBiller={setSelectedBiller} billMessage={billMessage} setBillMessage={setBillMessage} paymentConfirmOpen={paymentConfirmOpen} setPaymentConfirmOpen={setPaymentConfirmOpen} addToast={addToast} setReceipt={setReceipt} />}
+    <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} onCopy={copyReceiptReference} />
+    <ToastViewport toasts={toasts} onClose={removeToast} />
   </>;
 }
 
@@ -561,10 +730,14 @@ function LandingView({ openAuth }) {
   const { reducedMotion, lowDevice } = usePerformanceMode();
   const enablePrism = !reducedMotion && !lowDevice;
 
+  useEffect(() => {
+    prefetchDashboardChunks();
+  }, []);
+
   return <div className="landing-page">
-    <div className="background">{enablePrism ? <Suspense fallback={<PrismFallback />}><Prism animationType="rotate" height={3.5} baseWidth={5.5} scale={4} glow={0.95} noise={0.03} bloom={0.85} hueShift={-0.32} colorFrequency={0.92} timeScale={0.34} offset={{ x: 330, y: 12 }} transparent suspendWhenOffscreen /></Suspense> : <PrismFallback />}</div>
+    <div className="background"><SectionErrorBoundary>{enablePrism ? <Suspense fallback={<PrismFallback />}><Prism animationType="rotate" height={3.5} baseWidth={5.5} scale={4} glow={0.95} noise={0.03} bloom={0.85} hueShift={-0.32} colorFrequency={0.92} timeScale={0.34} offset={{ x: 330, y: 12 }} transparent suspendWhenOffscreen /></Suspense> : <PrismFallback />}</SectionErrorBoundary></div>
     <div className="overlay" />
-    <header className="navbar glass"><Brand /><nav className="nav-links"><a href="#intro">Intro</a><a href="#about">About</a><a href="#features">Features</a><button className="nav-sign-in" onClick={() => openAuth('signin')} type="button">Sign In</button></nav></header>
+    <header className="navbar glass"><Brand /><nav className="nav-links"><a href="#intro">Intro</a><a href="#about" onFocus={prefetchAboutChunks} onMouseEnter={prefetchAboutChunks}>About</a><a href="#features">Features</a><button className="nav-sign-in" onClick={() => openAuth('signin')} type="button">Sign In</button></nav></header>
     <main className="hero"><section className="hero-content"><div className="announcement-pill"><svg className="pill-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7L12 18l-1.7-5.6-5.5-1.7L10.3 9 12 3.5Z" /></svg>Autonomous banking, quietly overengineered</div><h1>Just a Normal <span className="headline-gradient">Banking App</span></h1><p>Absolutely nothing overengineered behind the scenes.</p><div className="hero-actions"><button className="btn btn-primary" onClick={() => openAuth('signin')} type="button"><span>Sign In</span><span className="cta-arrow" aria-hidden="true">&gt;</span></button><a className="btn btn-secondary" href="#intro"><span>Explore Architecture</span><span className="cta-arrow" aria-hidden="true">&gt;</span></a></div></section><TechStrip /></main>
     <LandingSections />
   </div>;
@@ -595,7 +768,7 @@ function LandingSections() {
     <section className="content-section" id="intro"><div className="section-heading"><p>Intro</p><h2>Banking infrastructure that feels quiet on the surface.</h2></div><div className="section-grid three"><article className="section-card"><span>01</span><h3>AI banking interface</h3><p>Zephyr brings a conversational layer to account activity, operational insight, and user workflows.</p></article><article className="section-card"><span>02</span><h3>Self-healing infrastructure</h3><p>Behind the interface, the platform is shaped around automated recovery and resilient service patterns.</p></article><article className="section-card"><span>03</span><h3>Cloud-native reliability</h3><p>Designed for modern deployment pipelines, observable systems, and durable financial experiences.</p></article></div></section>
     <section className="about-section about-grid-scan-ready" id="about" ref={aboutRef}>
       <div className="about-grid-bg" aria-hidden="true">
-        {enableGridScan ? <Suspense fallback={<PremiumSkeleton className="gridscan-skeleton" />}><GridScan
+        <SectionErrorBoundary>{enableGridScan ? <Suspense fallback={<PremiumSkeleton className="gridscan-skeleton" />}><GridScan
           enableWebcam={false}
           showPreview={false}
           lineThickness={1}
@@ -616,7 +789,7 @@ function LandingSections() {
           scanDelay={2.2}
           scanDirection="pingpong"
           className="zephyr-grid-scan"
-        /></Suspense> : <div className="static-grid-fallback" />}
+        /></Suspense> : <div className="static-grid-fallback" />}</SectionErrorBoundary>
       </div>
       <div className="about-section-inner">
         <div className="about-copy">
@@ -625,7 +798,7 @@ function LandingSections() {
           <p>DevOps Engineer building Phoenix-Ops and Zephyr — a self-healing banking platform powered by Kubernetes, observability, and AI-assisted remediation.</p>
         </div>
         <div className="about-profile-wrap">
-          {enableAboutCards ? <Suspense fallback={<AboutProfileFallback />}><ProfileCard
+          <SectionErrorBoundary>{enableAboutCards ? <Suspense fallback={<AboutProfileFallback />}><ProfileCard
             avatarUrl={profileImage}
             miniAvatarUrl={profileImage}
             iconUrl=""
@@ -641,7 +814,7 @@ function LandingSections() {
             behindGlowColor="rgba(96, 165, 250, 0.36)"
             innerGradient="linear-gradient(145deg, rgba(99, 102, 241, 0.34) 0%, rgba(14, 165, 233, 0.18) 58%, rgba(2, 2, 3, 0.18) 100%)"
             onContactClick={() => window.open('https://github.com/wajihahmed269', '_blank', 'noopener,noreferrer')}
-          /></Suspense> : <AboutProfileFallback />}
+          /></Suspense> : <AboutProfileFallback />}</SectionErrorBoundary>
         </div>
         <div className="built-with">
           <div className="built-with-heading">
@@ -649,7 +822,7 @@ function LandingSections() {
             <h3>The stack behind Zephyr and Phoenix-Ops.</h3>
           </div>
           <div className="tool-grid">
-            {enableAboutCards ? <Suspense fallback={<ChromaGridFallback />}><ChromaGrid items={chromaToolItems} /></Suspense> : <ChromaGridFallback />}
+            <SectionErrorBoundary>{enableAboutCards ? <Suspense fallback={<ChromaGridFallback />}><ChromaGrid items={chromaToolItems} /></Suspense> : <ChromaGridFallback />}</SectionErrorBoundary>
           </div>
         </div>
       </div>
@@ -662,7 +835,7 @@ function TechStrip() {
   return <section className="tech-strip glass" aria-label="Technology stack">{techStack.map((tech) => <span className="tech-item" key={tech.name}><span className="tech-icon"><TechIcon type={tech.icon} /></span>{tech.name}</span>)}</section>;
 }
 
-function AuthModal({ authMode, setAuthMode, closeAuth, enterDashboard }) {
+function AuthModal({ authMode, setAuthMode, closeAuth, enterDashboard, addToast }) {
   const [form, setForm] = useState({ username: '', password: '', confirmPassword: '' });
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
@@ -698,42 +871,49 @@ function AuthModal({ authMode, setAuthMode, closeAuth, enterDashboard }) {
     try {
       if (authMode === 'signin') {
         const result = await authApi.login({ username, password: form.password });
+        addToast({ type: 'success', title: 'Signed in', message: 'Live banking data is ready.' });
         enterDashboard(result.user || { username });
         return;
       }
 
       const result = await authApi.register({ username, password: form.password });
       if (result.token || result.user) {
+        addToast({ type: 'success', title: 'Account created', message: 'You are signed in to Zephyr.' });
         enterDashboard(result.user || { username });
         return;
       }
       setAuthSuccess('Account created. Sign in with your new username.');
+      addToast({ type: 'success', title: 'Account created', message: 'Sign in with your new username.' });
       setAuthMode('signin');
       setForm((current) => ({ ...current, password: '', confirmPassword: '' }));
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : 'Authentication failed.');
+      const message = error instanceof Error ? error.message : 'Authentication failed.';
+      setAuthError(message);
+      addToast({ type: 'error', title: authMode === 'signin' ? 'Sign in failed' : 'Register failed', message });
     } finally {
       setAuthLoading(false);
     }
-  }, [authMode, enterDashboard, form.confirmPassword, form.password, form.username, setAuthMode]);
+  }, [addToast, authMode, enterDashboard, form.confirmPassword, form.password, form.username, setAuthMode]);
 
   return <div className="auth-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAuth(); }}><section className="auth-modal glass" aria-modal="true" role="dialog"><button className="auth-close" onClick={closeAuth} type="button" aria-label="Close authentication modal">x</button><div className="auth-header"><div><h2>Welcome Back</h2><p>Sign in to continue to Zephyr.</p></div><div className="auth-tabs" role="tablist" aria-label="Authentication mode"><button className={authMode === 'signin' ? 'active' : ''} onClick={() => switchMode('signin')} type="button" role="tab" aria-selected={authMode === 'signin'}>Sign In</button><button className={authMode === 'signup' ? 'active' : ''} onClick={() => switchMode('signup')} type="button" role="tab" aria-selected={authMode === 'signup'}>Sign Up</button></div></div><div className="auth-panel" data-mode={authMode}><form className="auth-form" onSubmit={submitAuth}>{authMode === 'signup' && <label>Username<input type="text" value={form.username} onChange={(event) => updateField('username', event.target.value)} placeholder="wajih" autoComplete="username" /></label>}{authMode === 'signin' && <label>Username<input type="text" value={form.username} onChange={(event) => updateField('username', event.target.value)} placeholder="wajih" autoComplete="username" /></label>}<label>Password<input type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="Password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} /></label>{authMode === 'signup' && <label>Confirm Password<input type="password" value={form.confirmPassword} onChange={(event) => updateField('confirmPassword', event.target.value)} placeholder="Confirm password" autoComplete="new-password" /></label>}{authMode === 'signin' && <div className="auth-row"><label className="check-row"><input type="checkbox" /> Remember me</label><span>Spring API session</span></div>}{authError && <p className="auth-message error">{authError}</p>}{authSuccess && <p className="auth-message success">{authSuccess}</p>}<button className="btn btn-primary btn-auth-primary full-width" disabled={authLoading} type="submit"><span>{authLoading ? 'Working...' : authMode === 'signin' ? 'Sign In' : 'Create Account'}</span><span className="btn-arrow" aria-hidden="true">&gt;</span></button><button className="btn btn-auth-secondary full-width" disabled type="button"><span className="google-icon" aria-hidden="true">G</span><span>Backend auth only</span></button><p className="auth-switch">{authMode === 'signin' ? 'New to Zephyr?' : 'Already have an account?'} <button onClick={() => switchMode(authMode === 'signin' ? 'signup' : 'signin')} type="button">{authMode === 'signin' ? 'Create an account' : 'Sign in'}</button></p></form></div></section></div>;
 }
 
 function DashboardView(props) {
-  return <div className="dashboard-page"><DashboardNav view={props.view} setView={props.setView} goLanding={props.goLanding} notificationOpen={props.notificationOpen} setNotificationOpen={props.setNotificationOpen} />{props.view === 'dashboard' && <DashboardHome {...props} />}{props.view === 'transactions' && <TransactionsView {...props} />}{props.view === 'transfer' && <TransferView {...props} />}{props.view === 'analytics' && <AnalyticsView />}{props.view === 'profile' && <ProfileView />}</div>;
+  return <div className="dashboard-page"><DashboardNav view={props.view} setView={props.setView} goLanding={props.goLanding} notificationOpen={props.notificationOpen} setNotificationOpen={props.setNotificationOpen} notificationItems={props.notificationItems} markAllNotificationsRead={props.markAllNotificationsRead} clearReadNotifications={props.clearReadNotifications} toggleNotificationRead={props.toggleNotificationRead} />{props.view === 'dashboard' && <DashboardHome {...props} />}{props.view === 'transactions' && <TransactionsView {...props} />}{props.view === 'transfer' && <TransferView {...props} />}{props.view === 'analytics' && <AnalyticsView />}{props.view === 'profile' && <ProfileView resetDemoView={props.resetDemoView} />}</div>;
 }
 
-function DashboardNav({ view, setView, goLanding, notificationOpen, setNotificationOpen }) {
+function DashboardNav({ view, setView, goLanding, notificationOpen, setNotificationOpen, notificationItems, markAllNotificationsRead, clearReadNotifications, toggleNotificationRead }) {
   const toggleNotifications = useCallback(() => setNotificationOpen((current) => !current), [setNotificationOpen]);
   const closeNotifications = useCallback(() => setNotificationOpen(false), [setNotificationOpen]);
   const openProfile = useCallback(() => setView('profile'), [setView]);
+  const unreadCount = notificationItems.filter((item) => !item.read).length;
 
-  return <header className="dash-nav glass"><Brand /><nav className="dash-nav-links">{dashboardNav.map((item) => <button className={view === item.view ? 'active' : ''} key={item.label} onClick={() => setView(item.view)} type="button">{item.label}</button>)}</nav><div className="dash-user"><button className={notificationOpen ? 'icon-button notification-button active' : 'icon-button notification-button'} onClick={toggleNotifications} type="button" aria-label="Notifications" aria-expanded={notificationOpen}><MiniIcon type="bell" /></button><button className="dash-profile-trigger" onClick={openProfile} type="button" aria-label="Open profile view"><div className="avatar">WA</div><span>Wajih</span></button><button className="icon-button" onClick={goLanding} type="button" aria-label="Back to landing"><MiniIcon type="logout" /></button></div>{notificationOpen && <><button className="notification-scrim" onClick={closeNotifications} type="button" aria-label="Close notifications" /><NotificationPanel setView={setView} closePanel={closeNotifications} /></>}</header>;
+  return <header className="dash-nav glass"><Brand /><nav className="dash-nav-links">{dashboardNav.map((item) => <button className={view === item.view ? 'active' : ''} key={item.label} onClick={() => setView(item.view)} onFocus={item.view === 'profile' ? prefetchProfileChunks : undefined} onMouseEnter={item.view === 'profile' ? prefetchProfileChunks : undefined} type="button">{item.label}</button>)}</nav><div className="dash-user"><button className={notificationOpen ? 'icon-button notification-button active' : 'icon-button notification-button'} onClick={toggleNotifications} type="button" aria-label="Notifications" aria-expanded={notificationOpen}><MiniIcon type="bell" />{unreadCount > 0 && <span className="unread-badge">{unreadCount}</span>}</button><button className="dash-profile-trigger" onClick={openProfile} onFocus={prefetchProfileChunks} onMouseEnter={prefetchProfileChunks} type="button" aria-label="Open profile view"><div className="avatar">WA</div><span>Wajih</span></button><button className="icon-button" onClick={goLanding} type="button" aria-label="Back to landing"><MiniIcon type="logout" /></button></div>{notificationOpen && <><button className="notification-scrim" onClick={closeNotifications} type="button" aria-label="Close notifications" /><NotificationPanel items={notificationItems} setView={setView} closePanel={closeNotifications} markAllRead={markAllNotificationsRead} clearRead={clearReadNotifications} toggleRead={toggleNotificationRead} /></>}</header>;
 }
 
-function NotificationPanel({ setView, closePanel }) {
-  return <aside className="notification-panel glass" aria-label="Notifications"><div className="notification-panel-head"><div><p>Dashboard</p><h2>Notifications</h2></div><span>{notifications.length}</span></div><div className="notification-list">{notifications.map((item) => <article className={`notification-item ${item.status}`} key={item.title}><span className="notification-dot" /><div><h3>{item.title}</h3><p>{item.description}</p><small>{item.status}</small></div></article>)}</div><button className="notification-footer" onClick={() => { setView('analytics'); closePanel(); }} type="button">View system events</button></aside>;
+function NotificationPanel({ items, setView, closePanel, markAllRead, clearRead, toggleRead }) {
+  const unreadCount = items.filter((item) => !item.read).length;
+  return <aside className="notification-panel glass" aria-label="Notifications"><div className="notification-panel-head"><div><p>Dashboard</p><h2>Notifications</h2></div><span>{unreadCount}</span></div><div className="notification-actions"><button onClick={markAllRead} disabled={unreadCount === 0} type="button">Mark all read</button><button onClick={clearRead} disabled={!items.some((item) => item.read)} type="button">Clear read</button></div>{items.length === 0 ? <EmptyState title="No notifications" message="System and account alerts will appear here." /> : <div className="notification-list">{items.map((item) => <article className={`notification-item ${item.status} ${item.read ? 'read' : 'unread'}`} key={item.id}><span className="notification-dot" /><div><div className="notification-meta"><h3>{item.title}</h3><button onClick={() => toggleRead(item.id)} type="button">{item.read ? 'Unread' : 'Read'}</button></div><p>{item.description}</p><small>{item.status}</small></div></article>)}</div>}<button className="notification-footer" onClick={() => { setView('analytics'); closePanel(); }} type="button">View system events</button></aside>;
 }
 
 function DashboardHome({ setView, showBalance, setShowBalance, balance, balanceLoading, balanceError, recentTransactions, transactionsLoading, transactionsError, usingFallbackData, aiInput, setAiInput, aiMessages, aiLoading, sendAiMessage, setQuickPanel }) {
@@ -744,7 +924,7 @@ function DashboardHome({ setView, showBalance, setShowBalance, balance, balanceL
   const openPayBills = useCallback(() => setQuickPanel('payBills'), [setQuickPanel]);
   const openInvestment = useCallback(() => setQuickPanel('investment'), [setQuickPanel]);
   const quickActions = useMemo(() => [{ label: 'Transfer', icon: 'send', onClick: openTransfer }, { label: 'Add Money', icon: 'plus', onClick: openAddMoney }, { label: 'Pay Bills', icon: 'bill', onClick: openPayBills }, { label: 'History', icon: 'history', onClick: openTransactions }, { label: 'More', icon: 'more', onClick: openProfile }], [openAddMoney, openPayBills, openProfile, openTransactions, openTransfer]);
-  return <main className="dashboard-shell"><section className="dash-main"><BalanceCard showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} loading={balanceLoading} error={balanceError} usingFallbackData={usingFallbackData} /><QuickActions actions={quickActions} /><AiAssistant aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} aiLoading={aiLoading} sendAiMessage={sendAiMessage} /></section><aside className="dash-side"><RecentTransactions transactions={recentTransactions} loading={transactionsLoading} error={transactionsError} usingFallbackData={usingFallbackData} onViewAll={openTransactions} /><InvestmentsCard openPanel={openInvestment} /></aside><DashboardTechStrip /></main>;
+  return <main className="dashboard-shell"><section className="dash-main"><SectionErrorBoundary><BalanceCard showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} loading={balanceLoading} error={balanceError} usingFallbackData={usingFallbackData} /></SectionErrorBoundary><SectionErrorBoundary><QuickActions actions={quickActions} /></SectionErrorBoundary><SectionErrorBoundary><AiAssistant aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} aiLoading={aiLoading} sendAiMessage={sendAiMessage} /></SectionErrorBoundary></section><aside className="dash-side"><SectionErrorBoundary><RecentTransactions transactions={recentTransactions} loading={transactionsLoading} error={transactionsError} usingFallbackData={usingFallbackData} onViewAll={openTransactions} /></SectionErrorBoundary><SectionErrorBoundary><InvestmentsCard openPanel={openInvestment} /></SectionErrorBoundary></aside><DashboardTechStrip /></main>;
 }
 
 const BalanceCard = memo(function BalanceCard({ showBalance, setShowBalance, balance, loading, error, usingFallbackData }) {
@@ -757,7 +937,8 @@ const QuickActions = memo(function QuickActions({ actions }) {
 });
 
 const RecentTransactions = memo(function RecentTransactions({ transactions: recentItems, loading, error, usingFallbackData, onViewAll }) {
-  return <section className="recent-card glass"><div className="panel-heading row"><h2>Recent Transactions</h2><button onClick={onViewAll} type="button">View All</button></div>{error && <p className="data-status error">API error: {error}</p>}{usingFallbackData && <p className="data-status">Fallback demo transactions shown</p>}{loading ? <TransactionsSkeleton /> : <div className="transaction-list">{recentItems.slice(0, 4).map((transaction, index) => <TransactionItem key={`${transaction.id || transaction.name}-${transaction.date}-${index}`} transaction={transaction} />)}</div>}</section>;
+  const visibleItems = recentItems.slice(0, 4);
+  return <section className="recent-card glass"><div className="panel-heading row"><h2>Recent Transactions</h2><button onClick={onViewAll} type="button">View All</button></div>{error && <p className="data-status error">API error: {error}</p>}{usingFallbackData && <p className="data-status">Fallback demo transactions shown</p>}{loading ? <TransactionsSkeleton /> : visibleItems.length === 0 ? <EmptyState title="No transactions" message="Completed deposits, transfers, and payments will appear here." actionLabel="Open history" onAction={onViewAll} /> : <div className="transaction-list">{visibleItems.map((transaction, index) => <TransactionItem key={`${transaction.id || transaction.name}-${transaction.date}-${index}`} transaction={transaction} />)}</div>}</section>;
 });
 
 function TransactionItem({ transaction }) {
@@ -770,7 +951,7 @@ const AiAssistant = memo(function AiAssistant({ aiInput, setAiInput, aiMessages,
   const setBalancePrompt = useCallback(() => setAiInput('Why did my balance change?'), [setAiInput]);
   const setSpendingPrompt = useCallback(() => setAiInput('Summarize recent spending'), [setAiInput]);
   const setActivityPrompt = useCallback(() => setAiInput('Any unusual activity?'), [setAiInput]);
-  return <section className="ai-panel glass"><div className="panel-heading"><h2>AI Assistant</h2><p>Ask Zephyr about your account activity.</p></div><div className="suggestions"><button type="button" onClick={setBalancePrompt}>Why did my balance change?</button><button type="button" onClick={setSpendingPrompt}>Summarize recent spending</button><button type="button" onClick={setActivityPrompt}>Any unusual activity?</button></div><div className="chat-window">{aiMessages.map((message, index) => <p className={message.role === 'user' ? 'chat-bubble user' : message.error ? 'chat-bubble error' : 'chat-bubble'} key={`${message.role}-${index}`}>{message.text}</p>)}{aiLoading && <AssistantBubbleSkeleton />}</div><form className="ai-form" onSubmit={sendAiMessage}><input value={aiInput} onChange={(event) => setAiInput(event.target.value)} placeholder="Ask Zephyr anything..." disabled={aiLoading} /><button className="btn btn-primary" type="submit" disabled={aiLoading}>{aiLoading ? 'Sending' : 'Send'}</button></form></section>;
+  return <section className="ai-panel glass"><div className="panel-heading"><h2>AI Assistant</h2><p>Ask Zephyr about your account activity.</p></div><div className="suggestions"><button type="button" onClick={setBalancePrompt}>Why did my balance change?</button><button type="button" onClick={setSpendingPrompt}>Summarize recent spending</button><button type="button" onClick={setActivityPrompt}>Any unusual activity?</button></div><div className="chat-window">{aiMessages.length === 0 && !aiLoading ? <EmptyState title="No AI messages" message="Ask Zephyr for account summaries or activity insight." /> : aiMessages.map((message, index) => <p className={message.role === 'user' ? 'chat-bubble user' : message.error ? 'chat-bubble error' : 'chat-bubble'} key={`${message.role}-${index}`}>{message.text}</p>)}{aiLoading && <AssistantBubbleSkeleton />}</div><form className="ai-form" onSubmit={sendAiMessage}><input value={aiInput} onChange={(event) => setAiInput(event.target.value)} placeholder="Ask Zephyr anything..." disabled={aiLoading} /><button className="btn btn-primary" type="submit" disabled={aiLoading}>{aiLoading ? 'Sending' : 'Send'}</button></form></section>;
 });
 
 const InvestmentsCard = memo(function InvestmentsCard({ openPanel }) {
@@ -781,7 +962,7 @@ function MiniChart({ large = false }) {
   return <svg className={large ? 'market-chart large' : 'market-chart'} viewBox="0 0 320 120" fill="none" aria-hidden="true"><path d="M8 92 C48 72 64 88 96 54 C124 24 142 60 170 42 C202 20 218 78 250 50 C276 28 292 35 312 18" /><path d="M8 92 C48 72 64 88 96 54 C124 24 142 60 170 42 C202 20 218 78 250 50 C276 28 292 35 312 18 L312 116 L8 116 Z" /></svg>;
 }
 
-function QuickPanel({ type, closePanel, currentUser, refreshAccountData, selectedFundingSource, setSelectedFundingSource, fundingMessage, setFundingMessage, addMoneyStep, setAddMoneyStep, addMoneyAmount, setAddMoneyAmount, addMoneyNote, setAddMoneyNote, addMoneyError, setAddMoneyError, billCategory, setBillCategory, selectedBiller, setSelectedBiller, billMessage, setBillMessage, paymentConfirmOpen, setPaymentConfirmOpen, setPaymentToast }) {
+function QuickPanel({ type, closePanel, currentUser, refreshAccountData, selectedFundingSource, setSelectedFundingSource, fundingMessage, setFundingMessage, addMoneyStep, setAddMoneyStep, addMoneyAmount, setAddMoneyAmount, addMoneyNote, setAddMoneyNote, addMoneyError, setAddMoneyError, billCategory, setBillCategory, selectedBiller, setSelectedBiller, billMessage, setBillMessage, paymentConfirmOpen, setPaymentConfirmOpen, addToast, setReceipt }) {
   const visibleBillers = useMemo(() => billers.filter((biller) => billCategory === 'All' || biller[1] === billCategory), [billCategory]);
   const selectedBill = useMemo(() => billers.find(([name]) => name === selectedBiller), [selectedBiller]);
   const selectedBillAmount = selectedBill ? parseMoneyValue(selectedBill[2]) : null;
@@ -816,14 +997,16 @@ function QuickPanel({ type, closePanel, currentUser, refreshAccountData, selecte
       const result = await bankingApi.deposit(username, amount, selectedFundingSource, addMoneyNote.trim());
       await refreshAccountData({ allowFallback: false });
       setFundingMessage(`Deposit successful from ${selectedFundingSource}.`);
-      setPaymentToast({ title: 'Deposit successful', message: `${formatUSD(amount)} added to your balance.${result?.reference ? ` Ref ${result.reference}.` : ''}` });
+      addToast({ type: 'success', title: 'Deposit successful', message: `${formatUSD(amount)} added to your balance.${result?.reference ? ` Ref ${result.reference}.` : ''}` });
       closePanel();
     } catch (error) {
-      setAddMoneyError(error instanceof Error ? error.message : 'Deposit failed.');
+      const message = error instanceof Error ? error.message : 'Deposit failed.';
+      setAddMoneyError(message);
+      addToast({ type: 'error', title: 'Deposit failed', message });
     } finally {
       setPanelLoading(false);
     }
-  }, [addMoneyAmount, closePanel, currentUser, refreshAccountData, selectedFundingSource, setAddMoneyError, setFundingMessage, setPaymentToast]);
+  }, [addMoneyAmount, addMoneyNote, addToast, closePanel, currentUser, refreshAccountData, selectedFundingSource, setAddMoneyError, setFundingMessage]);
 
   const openPaymentConfirmation = useCallback(() => {
     if (!selectedBill) {
@@ -856,16 +1039,20 @@ function QuickPanel({ type, closePanel, currentUser, refreshAccountData, selecte
         note: `${selectedBill[0]} bill payment`,
       });
       await refreshAccountData({ allowFallback: false });
-      setPaymentToast({ title: 'Payment successful', message: `${selectedBill[0]} paid successfully.${result?.reference ? ` Ref ${result.reference}.` : ''}` });
+      const nextReceipt = buildReceipt({ transaction: result, type: 'Payment', amount: selectedBillAmount, biller: selectedBill[0], category: selectedBill[1], paymentMethod: 'Bank Balance', note: `${selectedBill[0]} bill payment` });
+      setReceipt(nextReceipt);
+      addToast({ type: 'success', title: 'Payment completed', message: `${selectedBill[0]} paid successfully.` });
       setPaymentConfirmOpen(false);
       closePanel();
     } catch (error) {
-      setBillMessage(error instanceof Error ? error.message : 'Payment failed.');
+      const message = error instanceof Error ? error.message : 'Payment failed.';
+      setBillMessage(message);
+      addToast({ type: 'error', title: 'Payment failed', message });
       setPaymentConfirmOpen(false);
     } finally {
       setPanelLoading(false);
     }
-  }, [closePanel, currentUser, refreshAccountData, selectedBill, selectedBillAmount, setBillMessage, setPaymentConfirmOpen, setPaymentToast]);
+  }, [addToast, closePanel, currentUser, refreshAccountData, selectedBill, selectedBillAmount, setBillMessage, setPaymentConfirmOpen, setReceipt]);
 
   return <div className="quick-panel-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !panelLoading) closePanel(); }}><section className="quick-panel glass"><button className="auth-close" onClick={closePanel} disabled={panelLoading} type="button" aria-label="Close panel">x</button><div className="panel-hero"><p>{type === 'investment' ? 'Prototype panel' : 'Connected to Spring API'}</p><h2>{title}</h2><span>{subtitle}</span></div>{type === 'addMoney' && <><div className="step-indicator"><span className={addMoneyStep === 'source' ? 'active' : ''}>1 Source</span><span className={addMoneyStep === 'details' ? 'active' : ''}>2 Amount</span></div>{addMoneyStep === 'source' ? <><div className="option-grid">{fundingSources.map(([name, description, icon]) => <button className={selectedFundingSource === name ? 'option-card selected' : 'option-card'} key={name} onClick={() => { setSelectedFundingSource(name); setFundingMessage(''); setAddMoneyError(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{description}</small></button>)}</div><button className="btn btn-primary full-width panel-action" disabled={!selectedFundingSource} onClick={continueAddMoney} type="button">Continue</button></> : <><div className="add-money-details"><h3>Add from {selectedFundingSource}</h3><p>Enter the amount you want to add to your Zephyr balance.</p><label>Amount<input value={addMoneyAmount} onChange={(event) => { setAddMoneyAmount(event.target.value); setAddMoneyError(''); }} inputMode="decimal" placeholder="0.00" disabled={panelLoading} /></label><label>Optional note/reference<textarea value={addMoneyNote} onChange={(event) => setAddMoneyNote(event.target.value)} placeholder="Reference note" disabled={panelLoading} /></label></div>{addMoneyError && <p className="panel-message error">{addMoneyError}</p>}{fundingMessage && <p className="panel-message">{fundingMessage}</p>}<div className="panel-actions split"><button className="btn btn-secondary" disabled={panelLoading} onClick={() => { setAddMoneyStep('source'); setAddMoneyError(''); setFundingMessage(''); }} type="button">Back</button><button className="btn btn-primary" disabled={panelLoading} onClick={confirmAddMoney} type="button">{panelLoading ? 'Depositing...' : 'Confirm Add Money'}</button></div></>}</>}{type === 'payBills' && <><div className="filter-tabs panel-filters">{['All', 'Subscriptions', 'Shopping', 'Cloud', 'Crypto', 'Utilities'].map((category) => <button className={billCategory === category ? 'active' : ''} key={category} onClick={() => { setBillCategory(category); setSelectedBiller(''); setBillMessage(''); setPaymentConfirmOpen(false); }} type="button">{category}</button>)}</div><div className="biller-grid">{visibleBillers.map(([name, category, amount, icon]) => <button className={selectedBiller === name ? 'biller-card selected' : 'biller-card'} key={name} onClick={() => { setSelectedBiller(name); setBillMessage(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{category}</small><b>{amount}</b></button>)}</div>{billMessage && <p className="panel-message error">{billMessage}</p>}<button className="btn btn-primary full-width panel-action" disabled={panelLoading} onClick={openPaymentConfirmation} type="button">{panelLoading ? 'Paying...' : 'Pay Selected'}</button>{paymentConfirmOpen && selectedBill && <PaymentConfirmModal billerName={selectedBill[0]} amount={selectedBillAmount} loading={panelLoading} onCancel={() => setPaymentConfirmOpen(false)} onConfirm={confirmPayment} />}</>}{type === 'investment' && <><div className="investment-panel-summary"><strong>$12,840.22</strong><span>+2.4% today</span></div><MiniChart large /><div className="watchlist-rows">{watchlist.map(([symbol, change]) => <div key={symbol}><span>{symbol}</span><b className={change.startsWith('+') ? 'positive' : 'negative'}>{change}</b><button disabled type="button">Prototype</button></div>)}</div><p className="panel-message">Market data is mocked in this UI sandbox.</p></>}</section></div>;
 }
@@ -875,7 +1062,7 @@ function PaymentConfirmModal({ billerName, amount, loading, onCancel, onConfirm 
 }
 
 function TransactionsView({ transactionSearch, setTransactionSearch, transactionFilter, setTransactionFilter, filteredTransactions, transactionsLoading, transactionsError, usingFallbackData }) {
-  return <main className="dashboard-shell single"><PageHeader title="Transactions" /><section className="data-card glass"><div className="transaction-tools"><input value={transactionSearch} onChange={(event) => setTransactionSearch(event.target.value)} placeholder="Search transactions..." /><div className="filter-tabs">{['all', 'income', 'spending', 'transfers'].map((filter) => <button className={transactionFilter === filter ? 'active' : ''} key={filter} onClick={() => setTransactionFilter(filter)} type="button">{filter === 'all' ? 'All' : filter[0].toUpperCase() + filter.slice(1)}</button>)}</div></div>{transactionsError && <p className="data-status error">API error: {transactionsError}</p>}{usingFallbackData && <p className="data-status">Fallback demo transactions shown</p>}{transactionsLoading ? <TransactionsSkeleton /> : <div className="transaction-list expanded">{filteredTransactions.map((transaction, index) => <TransactionItem key={`${transaction.id || transaction.name}-${index}`} transaction={transaction} />)}</div>}</section></main>;
+  return <main className="dashboard-shell single"><PageHeader title="Transactions" /><section className="data-card glass"><div className="transaction-tools"><input value={transactionSearch} onChange={(event) => setTransactionSearch(event.target.value)} placeholder="Search transactions..." /><div className="filter-tabs">{['all', 'income', 'spending', 'transfers'].map((filter) => <button className={transactionFilter === filter ? 'active' : ''} key={filter} onClick={() => setTransactionFilter(filter)} type="button">{filter === 'all' ? 'All' : filter[0].toUpperCase() + filter.slice(1)}</button>)}</div></div>{transactionsError && <p className="data-status error">API error: {transactionsError}</p>}{usingFallbackData && <p className="data-status">Fallback demo transactions shown</p>}{transactionsLoading ? <TransactionsSkeleton /> : filteredTransactions.length === 0 ? <EmptyState title="No transactions found" message="Try a different search or filter once account activity is available." /> : <div className="transaction-list expanded">{filteredTransactions.map((transaction, index) => <TransactionItem key={`${transaction.id || transaction.name}-${index}`} transaction={transaction} />)}</div>}</section></main>;
 }
 
 function TransferView({ transferForm, setTransferForm, transferError, transferSuccess, transferLoading, submitTransfer }) {
@@ -886,11 +1073,11 @@ function TransferView({ transferForm, setTransferForm, transferError, transferSu
 function AnalyticsView() {
   const stats = [['Monthly Income', '$2,950'], ['Monthly Spending', '$654'], ['Savings Rate', '72%'], ['Risk Score', 'Low'], ['Portfolio Growth', '+2.4%']];
   const bars = [['Shopping', 58], ['Subscriptions', 32], ['Transfer', 44], ['Food', 26]];
-  return <main className="dashboard-shell single"><PageHeader title="Analytics" />{false && <AnalyticsSkeleton />}<div className="analytics-grid">{stats.map(([label, value]) => <section className="stat-card glass" key={label}><span>{label}</span><strong>{value}</strong></section>)}</div><section className="chart-card glass"><h2>Spending Categories</h2>{bars.map(([label, width]) => <div className="bar-row" key={label}><span>{label}</span><div><b style={{ width: `${width}%` }} /></div></div>)}</section></main>;
+  return <main className="dashboard-shell single"><PageHeader title="Analytics" />{false && <AnalyticsSkeleton />}{stats.length === 0 && bars.length === 0 ? <section className="chart-card glass"><EmptyState title="No analytics yet" message="Spending insights will appear after transactions are available." /></section> : <><div className="analytics-grid">{stats.map(([label, value]) => <section className="stat-card glass" key={label}><span>{label}</span><strong>{value}</strong></section>)}</div><section className="chart-card glass"><h2>Spending Categories</h2>{bars.length === 0 ? <EmptyState title="No spending data" message="Category breakdowns will appear after payments or transfers post." /> : bars.map(([label, width]) => <div className="bar-row" key={label}><span>{label}</span><div><b style={{ width: `${width}%` }} /></div></div>)}</section></>}</main>;
 }
 
-function ProfileView() {
-  return <main className="dashboard-shell single profile-shell"><PageHeader title="Profile & Settings" /><Suspense fallback={<ProfileSkeleton />}><section className="profile-layout"><ReflectiveCard image={profileImage} name="Wajih Ahmed" role="DevOps Engineer" handle="@wajihahmed269" status="Building Zephyr" project="Phoenix-Ops / Zephyr" github="https://github.com/wajihahmed269" /><MagicBento items={profileSettings} className="profile-bento" /></section></Suspense></main>;
+function ProfileView({ resetDemoView }) {
+  return <main className="dashboard-shell single profile-shell"><PageHeader title="Profile & Settings" /><section className="profile-actions glass"><div><h2>Demo controls</h2><p>Reset local presentation state without changing backend account data.</p></div><button className="btn btn-secondary" onClick={resetDemoView} type="button">Reset demo view</button></section><SectionErrorBoundary><Suspense fallback={<ProfileSkeleton />}><section className="profile-layout"><ReflectiveCard image={profileImage} name="Wajih Ahmed" role="DevOps Engineer" handle="@wajihahmed269" status="Building Zephyr" project="Phoenix-Ops / Zephyr" github="https://github.com/wajihahmed269" /><MagicBento items={profileSettings} className="profile-bento" /></section></Suspense></SectionErrorBoundary></main>;
 }
 
 function PageHeader({ title }) {

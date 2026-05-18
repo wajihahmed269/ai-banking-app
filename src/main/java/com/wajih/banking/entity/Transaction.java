@@ -19,6 +19,20 @@ public class Transaction {
     @Column(nullable = false)
     private Double amount;
 
+    private String source;
+
+    private String note;
+
+    private String recipient;
+
+    private String biller;
+
+    private String category;
+
+    private String paymentMethod;
+
+    private String reference;
+
     @Column(nullable = false)
     private LocalDateTime timestamp = LocalDateTime.now();
 

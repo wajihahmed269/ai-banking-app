@@ -48,5 +48,9 @@ export async function request(path, options = {}) {
     throw new Error(normalizeError(payload.message));
   }
 
+  if (payload && typeof payload === 'object' && payload.success === true && 'data' in payload) {
+    return payload.data;
+  }
+
   return payload;
 }

@@ -4,12 +4,12 @@ import com.wajih.banking.entity.Transaction;
 import com.wajih.banking.entity.User;
 import com.wajih.banking.repository.TransactionRepository;
 import com.wajih.banking.repository.UserRepository;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -28,8 +28,10 @@ public class BankingService {
     }
 
     @Transactional
-    public void deposit(String username, Double amount) {
-        if (amount <= 0) throw new RuntimeException("Amount must be positive");
+    public Transaction deposit(String username, Double amount, String source, String note) {
+        if (amount <= 0) {
+            throw new RuntimeException("Amount must be positive");
+        }
 
         User user = userRepository.findByUsernameWithLock(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -37,16 +39,23 @@ public class BankingService {
         user.setBalance(user.getBalance() + amount);
         userRepository.save(user);
 
-        Transaction tx = new Transaction();
-        tx.setType("Deposit");
-        tx.setAmount(amount);
-        tx.setUser(user);
-        transactionRepository.save(tx);
+        Transaction tx = newTransaction(user, "DEPOSIT", amount);
+        tx.setSource(source);
+        tx.setNote(note);
+        tx.setReference(UUID.randomUUID().toString());
+        return transactionRepository.save(tx);
     }
 
     @Transactional
-    public void withdraw(String username, Double amount) {
-        if (amount <= 0) throw new RuntimeException("Amount must be positive");
+    public Transaction deposit(String username, Double amount) {
+        return deposit(username, amount, null, null);
+    }
+
+    @Transactional
+    public Transaction withdraw(String username, Double amount, String category, String note) {
+        if (amount <= 0) {
+            throw new RuntimeException("Amount must be positive");
+        }
 
         User user = userRepository.findByUsernameWithLock(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -58,19 +67,59 @@ public class BankingService {
         user.setBalance(user.getBalance() - amount);
         userRepository.save(user);
 
-        Transaction tx = new Transaction();
-        tx.setType("Withdrawal");
-        tx.setAmount(amount);
-        tx.setUser(user);
-        transactionRepository.save(tx);
+        Transaction tx = newTransaction(user, "WITHDRAWAL", amount);
+        tx.setCategory(category);
+        tx.setNote(note);
+        tx.setReference(UUID.randomUUID().toString());
+        return transactionRepository.save(tx);
     }
 
     @Transactional
-    public void transfer(String fromUsername, String toUsername, Double amount) {
-        if (amount <= 0) throw new RuntimeException("Amount must be positive");
-        if (fromUsername.equals(toUsername)) throw new RuntimeException("Cannot transfer to yourself");
+    public Transaction withdraw(String username, Double amount) {
+        return withdraw(username, amount, null, null);
+    }
 
-        // Lock both accounts in consistent order to prevent deadlock
+    @Transactional
+    public Transaction payBill(
+            String username,
+            String biller,
+            Double amount,
+            String category,
+            String paymentMethod,
+            String note
+    ) {
+        if (amount <= 0) {
+            throw new RuntimeException("Amount must be positive");
+        }
+
+        User user = userRepository.findByUsernameWithLock(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (user.getBalance() < amount) {
+            throw new RuntimeException("Insufficient balance");
+        }
+
+        user.setBalance(user.getBalance() - amount);
+        userRepository.save(user);
+
+        Transaction tx = newTransaction(user, "PAYMENT", amount);
+        tx.setBiller(biller);
+        tx.setCategory(category);
+        tx.setPaymentMethod(paymentMethod);
+        tx.setNote(note);
+        tx.setReference(UUID.randomUUID().toString());
+        return transactionRepository.save(tx);
+    }
+
+    @Transactional
+    public Transaction transfer(String fromUsername, String toUsername, Double amount, String note) {
+        if (amount <= 0) {
+            throw new RuntimeException("Amount must be positive");
+        }
+        if (fromUsername.equals(toUsername)) {
+            throw new RuntimeException("Cannot transfer to yourself");
+        }
+
         String first = fromUsername.compareTo(toUsername) < 0 ? fromUsername : toUsername;
         String second = first.equals(fromUsername) ? toUsername : fromUsername;
 
@@ -92,23 +141,38 @@ public class BankingService {
         userRepository.save(sender);
         userRepository.save(receiver);
 
-        String idempotencyKey = UUID.randomUUID().toString();
+        String reference = UUID.randomUUID().toString();
 
-        Transaction txOut = new Transaction();
-        txOut.setType("Transfer Out");
-        txOut.setAmount(amount);
-        txOut.setUser(sender);
-        transactionRepository.save(txOut);
+        Transaction txOut = newTransaction(sender, "TRANSFER", amount);
+        txOut.setRecipient(toUsername);
+        txOut.setNote(note);
+        txOut.setReference(reference);
+        Transaction savedOut = transactionRepository.save(txOut);
 
-        Transaction txIn = new Transaction();
-        txIn.setType("Transfer In");
-        txIn.setAmount(amount);
-        txIn.setUser(receiver);
+        Transaction txIn = newTransaction(receiver, "TRANSFER", amount);
+        txIn.setSource(fromUsername);
+        txIn.setNote(note);
+        txIn.setReference(reference);
         transactionRepository.save(txIn);
+
+        return savedOut;
+    }
+
+    @Transactional
+    public Transaction transfer(String fromUsername, String toUsername, Double amount) {
+        return transfer(fromUsername, toUsername, amount, null);
     }
 
     public List<Transaction> getTransactions(String username) {
         User user = findByUsername(username);
         return transactionRepository.findByUserOrderByTimestampDesc(user);
+    }
+
+    private Transaction newTransaction(User user, String type, Double amount) {
+        Transaction tx = new Transaction();
+        tx.setType(type);
+        tx.setAmount(amount);
+        tx.setUser(user);
+        return tx;
     }
 }

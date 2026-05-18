@@ -1,5 +1,9 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
+import { chat as sendAiChat } from './api/aiApi';
+import * as authApi from './api/authApi';
+import * as bankingApi from './api/bankingApi';
+import { clearSession, getCurrentUser } from './auth/session';
 
 const Prism = lazy(() => import('./components/backgrounds/Prism'));
 const GridScan = lazy(() => import('./components/backgrounds/GridScan').then((module) => ({ default: module.GridScan })));
@@ -165,6 +169,36 @@ const formatMoney = (amount) => {
   return `${amount < 0 ? '-' : '+'}$${absolute}`;
 };
 
+const getSessionUsername = (user) => user?.username || user?.email || '';
+
+const transactionDate = (timestamp) => {
+  if (!timestamp) return 'Recent';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return 'Recent';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const mapBackendTransaction = (transaction) => {
+  const rawType = transaction.type || 'Transaction';
+  const normalizedType = rawType.toLowerCase();
+  const isDebit = normalizedType.includes('withdraw') || normalizedType.includes('out');
+  const amount = Math.abs(Number(transaction.amount) || 0) * (isDebit ? -1 : 1);
+  const type = normalizedType.includes('deposit') || normalizedType.includes('in')
+    ? 'income'
+    : normalizedType.includes('transfer')
+      ? 'transfers'
+      : 'spending';
+
+  return {
+    id: transaction.id,
+    name: rawType,
+    amount,
+    date: transactionDate(transaction.timestamp),
+    type,
+    timestamp: transaction.timestamp,
+  };
+};
+
 function TechIcon({ type }) {
   const commonProps = {
     className: 'tech-svg',
@@ -292,13 +326,16 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState('signin');
   const [showBalance, setShowBalance] = useState(false);
+  const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [transactionSearch, setTransactionSearch] = useState('');
   const [transactionFilter, setTransactionFilter] = useState('all');
   const [transferForm, setTransferForm] = useState({ recipient: '', amount: '', note: '' });
   const [transferError, setTransferError] = useState('');
   const [transferSuccess, setTransferSuccess] = useState('');
+  const [transferLoading, setTransferLoading] = useState(false);
   const [aiInput, setAiInput] = useState('');
-  const [aiMessages, setAiMessages] = useState([{ role: 'assistant', text: 'Welcome back. Your prototype account looks stable today.' }]);
+  const [aiMessages, setAiMessages] = useState([{ role: 'assistant', text: 'Sign in to ask Zephyr about your live account activity.' }]);
+  const [aiLoading, setAiLoading] = useState(false);
   const [quickPanel, setQuickPanel] = useState(null);
   const [selectedFundingSource, setSelectedFundingSource] = useState('');
   const [fundingMessage, setFundingMessage] = useState('');
@@ -306,8 +343,13 @@ export default function App() {
   const [selectedBiller, setSelectedBiller] = useState('');
   const [billMessage, setBillMessage] = useState('');
   const [notificationOpen, setNotificationOpen] = useState(false);
-  const [balance, setBalance] = useState(initialBalance);
-  const [recentTransactions, setRecentTransactions] = useState(transactions);
+  const [balance, setBalance] = useState(0);
+  const [recentTransactions, setRecentTransactions] = useState([]);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState('');
+  const [transactionsError, setTransactionsError] = useState('');
+  const [usingFallbackData, setUsingFallbackData] = useState(false);
   const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
   const [paymentToast, setPaymentToast] = useState(null);
   const [addMoneyStep, setAddMoneyStep] = useState('source');
@@ -320,15 +362,24 @@ export default function App() {
     setIsAuthOpen(true);
   }, []);
   const closeAuth = useCallback(() => setIsAuthOpen(false), []);
-  const enterDashboard = useCallback(() => {
+  const enterDashboard = useCallback((user = currentUser) => {
     closeAuth();
+    if (user) {
+      setCurrentUserState(user);
+      setAiMessages([{ role: 'assistant', text: 'Welcome back. I can now review your live Zephyr account activity.' }]);
+    }
     setView('dashboard');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [closeAuth]);
+  }, [closeAuth, currentUser]);
   const goLanding = useCallback(() => {
+    clearSession();
+    setCurrentUserState(null);
     setView('landing');
     setIsAuthOpen(false);
     setNotificationOpen(false);
+    setBalance(0);
+    setRecentTransactions([]);
+    setUsingFallbackData(false);
     setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
   }, []);
 
@@ -358,6 +409,38 @@ export default function App() {
     resetAddMoneyFlow();
   }, [resetAddMoneyFlow]);
 
+  const refreshAccountData = useCallback(async ({ allowFallback = true } = {}) => {
+    const username = getSessionUsername(currentUser);
+    if (!username) return;
+
+    setBalanceLoading(true);
+    setTransactionsLoading(true);
+    setBalanceError('');
+    setTransactionsError('');
+    setUsingFallbackData(false);
+
+    try {
+      const [nextBalance, nextTransactions] = await Promise.all([
+        bankingApi.getBalance(username),
+        bankingApi.getTransactions(username),
+      ]);
+      setBalance(Number(nextBalance) || 0);
+      setRecentTransactions(Array.isArray(nextTransactions) ? nextTransactions.map(mapBackendTransaction) : []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load account data.';
+      setBalanceError(message);
+      setTransactionsError(message);
+      if (allowFallback) {
+        setBalance(initialBalance);
+        setRecentTransactions(transactions);
+        setUsingFallbackData(true);
+      }
+    } finally {
+      setBalanceLoading(false);
+      setTransactionsLoading(false);
+    }
+  }, [currentUser]);
+
   const filteredTransactions = useMemo(() => {
     const query = transactionSearch.trim().toLowerCase();
     return recentTransactions.filter((transaction) => {
@@ -367,17 +450,44 @@ export default function App() {
     });
   }, [recentTransactions, transactionSearch, transactionFilter]);
 
-  const sendAiMessage = useCallback((event) => {
+  useEffect(() => {
+    if (view === 'landing' || !currentUser) return;
+    refreshAccountData();
+  }, [currentUser, refreshAccountData, view]);
+
+  const sendAiMessage = useCallback(async (event) => {
     event.preventDefault();
     const text = aiInput.trim();
     if (!text) return;
-    setAiMessages((current) => [...current, { role: 'user', text }, { role: 'assistant', text: 'I reviewed your recent activity. No unusual spending patterns detected in this prototype.' }]);
+    const username = getSessionUsername(currentUser);
+    if (!username) {
+      setAiMessages((current) => [...current, { role: 'user', text }, { role: 'assistant', text: 'Sign in before using the live AI assistant.', error: true }]);
+      setAiInput('');
+      return;
+    }
+    setAiMessages((current) => [...current, { role: 'user', text }]);
     setAiInput('');
-  }, [aiInput]);
+    setAiLoading(true);
+    try {
+      const result = await sendAiChat(username, text);
+      setAiMessages((current) => [...current, { role: 'assistant', text: result.response || 'No response from AI.' }]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'AI failed. Please try again.';
+      setAiMessages((current) => [...current, { role: 'assistant', text: message, error: true }]);
+    } finally {
+      setAiLoading(false);
+    }
+  }, [aiInput, currentUser]);
 
-  const submitTransfer = useCallback((event) => {
+  const submitTransfer = useCallback(async (event) => {
     event.preventDefault();
+    const username = getSessionUsername(currentUser);
     const amount = Number(transferForm.amount);
+    if (!username) {
+      setTransferError('Sign in before sending money.');
+      setTransferSuccess('');
+      return;
+    }
     if (!transferForm.recipient.trim()) {
       setTransferError('Recipient is required.');
       setTransferSuccess('');
@@ -389,8 +499,19 @@ export default function App() {
       return;
     }
     setTransferError('');
-    setTransferSuccess('Transfer prepared in prototype mode.');
-  }, [transferForm.amount, transferForm.recipient]);
+    setTransferSuccess('');
+    setTransferLoading(true);
+    try {
+      const result = await bankingApi.transfer(username, transferForm.recipient.trim(), amount);
+      await refreshAccountData({ allowFallback: false });
+      setTransferSuccess(typeof result === 'string' ? result : 'Transfer successful');
+      setTransferForm({ recipient: '', amount: '', note: '' });
+    } catch (error) {
+      setTransferError(error instanceof Error ? error.message : 'Transfer failed.');
+    } finally {
+      setTransferLoading(false);
+    }
+  }, [currentUser, refreshAccountData, setTransferForm, transferForm.amount, transferForm.recipient]);
 
   useEffect(() => {
     if (!isAuthOpen) return undefined;
@@ -426,9 +547,9 @@ export default function App() {
   }, [notificationOpen]);
 
   return <>
-    {view === 'landing' ? <LandingView openAuth={openAuth} /> : <DashboardView view={view} setView={setView} goLanding={goLanding} showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} recentTransactions={recentTransactions} transactionSearch={transactionSearch} setTransactionSearch={setTransactionSearch} transactionFilter={transactionFilter} setTransactionFilter={setTransactionFilter} filteredTransactions={filteredTransactions} transferForm={transferForm} setTransferForm={setTransferForm} transferError={transferError} transferSuccess={transferSuccess} submitTransfer={submitTransfer} aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} sendAiMessage={sendAiMessage} setQuickPanel={openQuickPanel} notificationOpen={notificationOpen} setNotificationOpen={setNotificationOpen} />}
+    {view === 'landing' ? <LandingView openAuth={openAuth} /> : <DashboardView view={view} setView={setView} goLanding={goLanding} showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} balanceLoading={balanceLoading} balanceError={balanceError} recentTransactions={recentTransactions} transactionsLoading={transactionsLoading} transactionsError={transactionsError} usingFallbackData={usingFallbackData} transactionSearch={transactionSearch} setTransactionSearch={setTransactionSearch} transactionFilter={transactionFilter} setTransactionFilter={setTransactionFilter} filteredTransactions={filteredTransactions} transferForm={transferForm} setTransferForm={setTransferForm} transferError={transferError} transferSuccess={transferSuccess} transferLoading={transferLoading} submitTransfer={submitTransfer} aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} aiLoading={aiLoading} sendAiMessage={sendAiMessage} setQuickPanel={openQuickPanel} notificationOpen={notificationOpen} setNotificationOpen={setNotificationOpen} />}
     {isAuthOpen && <AuthModal authMode={authMode} setAuthMode={setAuthMode} closeAuth={closeAuth} enterDashboard={enterDashboard} />}
-    {quickPanel && <QuickPanel type={quickPanel} closePanel={closeQuickPanel} selectedFundingSource={selectedFundingSource} setSelectedFundingSource={setSelectedFundingSource} fundingMessage={fundingMessage} setFundingMessage={setFundingMessage} addMoneyStep={addMoneyStep} setAddMoneyStep={setAddMoneyStep} addMoneyAmount={addMoneyAmount} setAddMoneyAmount={setAddMoneyAmount} addMoneyNote={addMoneyNote} setAddMoneyNote={setAddMoneyNote} addMoneyError={addMoneyError} setAddMoneyError={setAddMoneyError} billCategory={billCategory} setBillCategory={setBillCategory} selectedBiller={selectedBiller} setSelectedBiller={setSelectedBiller} billMessage={billMessage} setBillMessage={setBillMessage} balance={balance} setBalance={setBalance} setRecentTransactions={setRecentTransactions} paymentConfirmOpen={paymentConfirmOpen} setPaymentConfirmOpen={setPaymentConfirmOpen} setPaymentToast={setPaymentToast} />}
+    {quickPanel && <QuickPanel type={quickPanel} closePanel={closeQuickPanel} currentUser={currentUser} refreshAccountData={refreshAccountData} selectedFundingSource={selectedFundingSource} setSelectedFundingSource={setSelectedFundingSource} fundingMessage={fundingMessage} setFundingMessage={setFundingMessage} addMoneyStep={addMoneyStep} setAddMoneyStep={setAddMoneyStep} addMoneyAmount={addMoneyAmount} setAddMoneyAmount={setAddMoneyAmount} addMoneyNote={addMoneyNote} setAddMoneyNote={setAddMoneyNote} addMoneyError={addMoneyError} setAddMoneyError={setAddMoneyError} billCategory={billCategory} setBillCategory={setBillCategory} selectedBiller={selectedBiller} setSelectedBiller={setSelectedBiller} billMessage={billMessage} setBillMessage={setBillMessage} paymentConfirmOpen={paymentConfirmOpen} setPaymentConfirmOpen={setPaymentConfirmOpen} setPaymentToast={setPaymentToast} />}
     {paymentToast && <div className="payment-toast glass"><strong>{paymentToast.title}</strong><span>{paymentToast.message}</span><button onClick={() => setPaymentToast(null)} type="button" aria-label="Dismiss payment message">x</button></div>}
   </>;
 }
@@ -539,7 +660,61 @@ function TechStrip() {
 }
 
 function AuthModal({ authMode, setAuthMode, closeAuth, enterDashboard }) {
-  return <div className="auth-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAuth(); }}><section className="auth-modal glass" aria-modal="true" role="dialog"><button className="auth-close" onClick={closeAuth} type="button" aria-label="Close authentication modal">x</button><div className="auth-header"><div><h2>Welcome Back</h2><p>Sign in to continue to Zephyr.</p></div><div className="auth-tabs" role="tablist" aria-label="Authentication mode"><button className={authMode === 'signin' ? 'active' : ''} onClick={() => setAuthMode('signin')} type="button" role="tab" aria-selected={authMode === 'signin'}>Sign In</button><button className={authMode === 'signup' ? 'active' : ''} onClick={() => setAuthMode('signup')} type="button" role="tab" aria-selected={authMode === 'signup'}>Sign Up</button></div></div><div className="auth-panel" data-mode={authMode}>{authMode === 'signin' ? <form className="auth-form"><label>Email<input type="email" placeholder="you@zephyr.bank" /></label><label>Password<input type="password" placeholder="Password" /></label><div className="auth-row"><label className="check-row"><input type="checkbox" /> Remember me</label><a href="#">Forgot password?</a></div><button className="btn btn-primary btn-auth-primary full-width" onClick={enterDashboard} type="button"><span>Sign In</span><span className="btn-arrow" aria-hidden="true">&gt;</span></button><button className="btn btn-auth-secondary full-width" type="button"><span className="google-icon" aria-hidden="true">G</span><span>Continue with Google</span></button><p className="auth-switch">New to Zephyr? <button onClick={() => setAuthMode('signup')} type="button">Create an account</button></p></form> : <form className="auth-form"><label>Full Name<input type="text" placeholder="Full name" /></label><label>Email<input type="email" placeholder="you@zephyr.bank" /></label><label>Password<input type="password" placeholder="Password" /></label><label>Confirm Password<input type="password" placeholder="Confirm password" /></label><button className="btn btn-primary btn-auth-primary full-width" onClick={enterDashboard} type="button"><span>Create Account</span><span className="btn-arrow" aria-hidden="true">&gt;</span></button><button className="btn btn-auth-secondary full-width" type="button"><span className="google-icon" aria-hidden="true">G</span><span>Continue with Google</span></button><p className="auth-switch">Already have an account? <button onClick={() => setAuthMode('signin')} type="button">Sign in</button></p></form>}</div></section></div>;
+  const [form, setForm] = useState({ username: '', password: '', confirmPassword: '' });
+  const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const updateField = useCallback((field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setAuthError('');
+    setAuthSuccess('');
+  }, []);
+
+  const switchMode = useCallback((mode) => {
+    setAuthMode(mode);
+    setAuthError('');
+    setAuthSuccess('');
+  }, [setAuthMode]);
+
+  const submitAuth = useCallback(async (event) => {
+    event.preventDefault();
+    const username = form.username.trim();
+    if (!username || !form.password) {
+      setAuthError('Username and password are required.');
+      return;
+    }
+    if (authMode === 'signup' && form.password !== form.confirmPassword) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError('');
+    setAuthSuccess('');
+    try {
+      if (authMode === 'signin') {
+        const result = await authApi.login({ username, password: form.password });
+        enterDashboard(result.user || { username });
+        return;
+      }
+
+      const result = await authApi.register({ username, password: form.password });
+      if (result.token || result.user) {
+        enterDashboard(result.user || { username });
+        return;
+      }
+      setAuthSuccess('Account created. Sign in with your new username.');
+      setAuthMode('signin');
+      setForm((current) => ({ ...current, password: '', confirmPassword: '' }));
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Authentication failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  }, [authMode, enterDashboard, form.confirmPassword, form.password, form.username, setAuthMode]);
+
+  return <div className="auth-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAuth(); }}><section className="auth-modal glass" aria-modal="true" role="dialog"><button className="auth-close" onClick={closeAuth} type="button" aria-label="Close authentication modal">x</button><div className="auth-header"><div><h2>Welcome Back</h2><p>Sign in to continue to Zephyr.</p></div><div className="auth-tabs" role="tablist" aria-label="Authentication mode"><button className={authMode === 'signin' ? 'active' : ''} onClick={() => switchMode('signin')} type="button" role="tab" aria-selected={authMode === 'signin'}>Sign In</button><button className={authMode === 'signup' ? 'active' : ''} onClick={() => switchMode('signup')} type="button" role="tab" aria-selected={authMode === 'signup'}>Sign Up</button></div></div><div className="auth-panel" data-mode={authMode}><form className="auth-form" onSubmit={submitAuth}>{authMode === 'signup' && <label>Username<input type="text" value={form.username} onChange={(event) => updateField('username', event.target.value)} placeholder="wajih" autoComplete="username" /></label>}{authMode === 'signin' && <label>Username<input type="text" value={form.username} onChange={(event) => updateField('username', event.target.value)} placeholder="wajih" autoComplete="username" /></label>}<label>Password<input type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="Password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} /></label>{authMode === 'signup' && <label>Confirm Password<input type="password" value={form.confirmPassword} onChange={(event) => updateField('confirmPassword', event.target.value)} placeholder="Confirm password" autoComplete="new-password" /></label>}{authMode === 'signin' && <div className="auth-row"><label className="check-row"><input type="checkbox" /> Remember me</label><span>Spring API session</span></div>}{authError && <p className="auth-message error">{authError}</p>}{authSuccess && <p className="auth-message success">{authSuccess}</p>}<button className="btn btn-primary btn-auth-primary full-width" disabled={authLoading} type="submit"><span>{authLoading ? 'Working...' : authMode === 'signin' ? 'Sign In' : 'Create Account'}</span><span className="btn-arrow" aria-hidden="true">&gt;</span></button><button className="btn btn-auth-secondary full-width" disabled type="button"><span className="google-icon" aria-hidden="true">G</span><span>Backend auth only</span></button><p className="auth-switch">{authMode === 'signin' ? 'New to Zephyr?' : 'Already have an account?'} <button onClick={() => switchMode(authMode === 'signin' ? 'signup' : 'signin')} type="button">{authMode === 'signin' ? 'Create an account' : 'Sign in'}</button></p></form></div></section></div>;
 }
 
 function DashboardView(props) {
@@ -558,7 +733,7 @@ function NotificationPanel({ setView, closePanel }) {
   return <aside className="notification-panel glass" aria-label="Notifications"><div className="notification-panel-head"><div><p>Dashboard</p><h2>Notifications</h2></div><span>{notifications.length}</span></div><div className="notification-list">{notifications.map((item) => <article className={`notification-item ${item.status}`} key={item.title}><span className="notification-dot" /><div><h3>{item.title}</h3><p>{item.description}</p><small>{item.status}</small></div></article>)}</div><button className="notification-footer" onClick={() => { setView('analytics'); closePanel(); }} type="button">View system events</button></aside>;
 }
 
-function DashboardHome({ setView, showBalance, setShowBalance, balance, recentTransactions, aiInput, setAiInput, aiMessages, sendAiMessage, setQuickPanel }) {
+function DashboardHome({ setView, showBalance, setShowBalance, balance, balanceLoading, balanceError, recentTransactions, transactionsLoading, transactionsError, usingFallbackData, aiInput, setAiInput, aiMessages, aiLoading, sendAiMessage, setQuickPanel }) {
   const openTransfer = useCallback(() => setView('transfer'), [setView]);
   const openTransactions = useCallback(() => setView('transactions'), [setView]);
   const openProfile = useCallback(() => setView('profile'), [setView]);
@@ -566,32 +741,33 @@ function DashboardHome({ setView, showBalance, setShowBalance, balance, recentTr
   const openPayBills = useCallback(() => setQuickPanel('payBills'), [setQuickPanel]);
   const openInvestment = useCallback(() => setQuickPanel('investment'), [setQuickPanel]);
   const quickActions = useMemo(() => [{ label: 'Transfer', icon: 'send', onClick: openTransfer }, { label: 'Add Money', icon: 'plus', onClick: openAddMoney }, { label: 'Pay Bills', icon: 'bill', onClick: openPayBills }, { label: 'History', icon: 'history', onClick: openTransactions }, { label: 'More', icon: 'more', onClick: openProfile }], [openAddMoney, openPayBills, openProfile, openTransactions, openTransfer]);
-  return <main className="dashboard-shell"><section className="dash-main"><BalanceCard showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} /><QuickActions actions={quickActions} /><AiAssistant aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} sendAiMessage={sendAiMessage} /></section><aside className="dash-side"><RecentTransactions transactions={recentTransactions} onViewAll={openTransactions} /><InvestmentsCard openPanel={openInvestment} /></aside><DashboardTechStrip /></main>;
+  return <main className="dashboard-shell"><section className="dash-main"><BalanceCard showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} loading={balanceLoading} error={balanceError} usingFallbackData={usingFallbackData} /><QuickActions actions={quickActions} /><AiAssistant aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} aiLoading={aiLoading} sendAiMessage={sendAiMessage} /></section><aside className="dash-side"><RecentTransactions transactions={recentTransactions} loading={transactionsLoading} error={transactionsError} usingFallbackData={usingFallbackData} onViewAll={openTransactions} /><InvestmentsCard openPanel={openInvestment} /></aside><DashboardTechStrip /></main>;
 }
 
-const BalanceCard = memo(function BalanceCard({ showBalance, setShowBalance, balance }) {
+const BalanceCard = memo(function BalanceCard({ showBalance, setShowBalance, balance, loading, error, usingFallbackData }) {
   const toggleBalance = useCallback(() => setShowBalance((current) => !current), [setShowBalance]);
-  return <div className="balance-card glass" onClick={toggleBalance} role="button" tabIndex={0}><div className="balance-copy"><div className="card-title-row"><p>Total Balance</p><button className="icon-button" onClick={(event) => { event.stopPropagation(); toggleBalance(); }} type="button" aria-label="Toggle balance"><MiniIcon type="eye" /></button></div><h1>{showBalance ? formatUSD(balance) : '••••••'}</h1><span>{showBalance ? 'Balance revealed' : 'Tap the card to reveal'}</span></div><div className="cat-stage"><img className={showBalance ? 'cat-image visible' : 'cat-image'} src="/assets/cats/cat-shocked.png" alt="Shocked cat face" loading="lazy" decoding="async" width="230" height="230" /><img className={showBalance ? 'cat-image' : 'cat-image visible'} src="/assets/cats/cat-normal.png" alt="Cute standing cat" loading="lazy" decoding="async" width="230" height="230" /></div></div>;
+  return <div className="balance-card glass" onClick={toggleBalance} role="button" tabIndex={0}><div className="balance-copy"><div className="card-title-row"><p>Total Balance</p><button className="icon-button" onClick={(event) => { event.stopPropagation(); toggleBalance(); }} type="button" aria-label="Toggle balance"><MiniIcon type="eye" /></button></div>{loading ? <DashboardSkeleton /> : <><h1>{showBalance ? formatUSD(balance) : '••••••'}</h1><span>{error ? `API error: ${error}` : usingFallbackData ? 'Fallback demo balance shown' : showBalance ? 'Balance revealed' : 'Tap the card to reveal'}</span></>} </div><div className="cat-stage"><img className={showBalance ? 'cat-image visible' : 'cat-image'} src="/assets/cats/cat-shocked.png" alt="Shocked cat face" loading="lazy" decoding="async" width="230" height="230" /><img className={showBalance ? 'cat-image' : 'cat-image visible'} src="/assets/cats/cat-normal.png" alt="Cute standing cat" loading="lazy" decoding="async" width="230" height="230" /></div></div>;
 });
 
 const QuickActions = memo(function QuickActions({ actions }) {
   return <section className="quick-card glass"><div className="panel-heading"><h2>Quick Actions</h2></div><div className="quick-grid">{actions.map((action) => <button className="quick-action" key={action.label} onClick={action.onClick} type="button"><span><MiniIcon type={action.icon} /></span>{action.label}</button>)}</div></section>;
 });
 
-const RecentTransactions = memo(function RecentTransactions({ transactions: recentItems, onViewAll }) {
-  return <section className="recent-card glass"><div className="panel-heading row"><h2>Recent Transactions</h2><button onClick={onViewAll} type="button">View All</button></div><div className="transaction-list">{recentItems.slice(0, 4).map((transaction, index) => <TransactionItem key={`${transaction.name}-${transaction.date}-${index}`} transaction={transaction} />)}</div></section>;
+const RecentTransactions = memo(function RecentTransactions({ transactions: recentItems, loading, error, usingFallbackData, onViewAll }) {
+  return <section className="recent-card glass"><div className="panel-heading row"><h2>Recent Transactions</h2><button onClick={onViewAll} type="button">View All</button></div>{error && <p className="data-status error">API error: {error}</p>}{usingFallbackData && <p className="data-status">Fallback demo transactions shown</p>}{loading ? <TransactionsSkeleton /> : <div className="transaction-list">{recentItems.slice(0, 4).map((transaction, index) => <TransactionItem key={`${transaction.id || transaction.name}-${transaction.date}-${index}`} transaction={transaction} />)}</div>}</section>;
 });
 
 function TransactionItem({ transaction }) {
   const positive = transaction.amount > 0;
-  return <div className="transaction-item"><span className="merchant-icon">{transaction.name.slice(0, 1)}</span><div><strong>{transaction.name}</strong><small>{transaction.date}</small></div><b className={positive ? 'amount positive' : 'amount negative'}>{formatMoney(transaction.amount)}</b></div>;
+  const name = transaction.name || 'Transaction';
+  return <div className="transaction-item"><span className="merchant-icon">{name.slice(0, 1)}</span><div><strong>{name}</strong><small>{transaction.date}</small></div><b className={positive ? 'amount positive' : 'amount negative'}>{formatMoney(transaction.amount)}</b></div>;
 }
 
-const AiAssistant = memo(function AiAssistant({ aiInput, setAiInput, aiMessages, sendAiMessage }) {
+const AiAssistant = memo(function AiAssistant({ aiInput, setAiInput, aiMessages, aiLoading, sendAiMessage }) {
   const setBalancePrompt = useCallback(() => setAiInput('Why did my balance change?'), [setAiInput]);
   const setSpendingPrompt = useCallback(() => setAiInput('Summarize recent spending'), [setAiInput]);
   const setActivityPrompt = useCallback(() => setAiInput('Any unusual activity?'), [setAiInput]);
-  return <section className="ai-panel glass"><div className="panel-heading"><h2>AI Assistant</h2><p>Ask Zephyr about your account activity.</p></div><div className="suggestions"><button type="button" onClick={setBalancePrompt}>Why did my balance change?</button><button type="button" onClick={setSpendingPrompt}>Summarize recent spending</button><button type="button" onClick={setActivityPrompt}>Any unusual activity?</button></div><div className="chat-window">{aiMessages.map((message, index) => <p className={message.role === 'user' ? 'chat-bubble user' : 'chat-bubble'} key={`${message.role}-${index}`}>{message.text}</p>)}{false && <AssistantBubbleSkeleton />}</div><form className="ai-form" onSubmit={sendAiMessage}><input value={aiInput} onChange={(event) => setAiInput(event.target.value)} placeholder="Ask Zephyr anything..." /><button className="btn btn-primary" type="submit">Send</button></form></section>;
+  return <section className="ai-panel glass"><div className="panel-heading"><h2>AI Assistant</h2><p>Ask Zephyr about your account activity.</p></div><div className="suggestions"><button type="button" onClick={setBalancePrompt}>Why did my balance change?</button><button type="button" onClick={setSpendingPrompt}>Summarize recent spending</button><button type="button" onClick={setActivityPrompt}>Any unusual activity?</button></div><div className="chat-window">{aiMessages.map((message, index) => <p className={message.role === 'user' ? 'chat-bubble user' : message.error ? 'chat-bubble error' : 'chat-bubble'} key={`${message.role}-${index}`}>{message.text}</p>)}{aiLoading && <AssistantBubbleSkeleton />}</div><form className="ai-form" onSubmit={sendAiMessage}><input value={aiInput} onChange={(event) => setAiInput(event.target.value)} placeholder="Ask Zephyr anything..." disabled={aiLoading} /><button className="btn btn-primary" type="submit" disabled={aiLoading}>{aiLoading ? 'Sending' : 'Send'}</button></form></section>;
 });
 
 const InvestmentsCard = memo(function InvestmentsCard({ openPanel }) {
@@ -602,12 +778,13 @@ function MiniChart({ large = false }) {
   return <svg className={large ? 'market-chart large' : 'market-chart'} viewBox="0 0 320 120" fill="none" aria-hidden="true"><path d="M8 92 C48 72 64 88 96 54 C124 24 142 60 170 42 C202 20 218 78 250 50 C276 28 292 35 312 18" /><path d="M8 92 C48 72 64 88 96 54 C124 24 142 60 170 42 C202 20 218 78 250 50 C276 28 292 35 312 18 L312 116 L8 116 Z" /></svg>;
 }
 
-function QuickPanel({ type, closePanel, selectedFundingSource, setSelectedFundingSource, fundingMessage, setFundingMessage, addMoneyStep, setAddMoneyStep, addMoneyAmount, setAddMoneyAmount, addMoneyNote, setAddMoneyNote, addMoneyError, setAddMoneyError, billCategory, setBillCategory, selectedBiller, setSelectedBiller, billMessage, setBillMessage, balance, setBalance, setRecentTransactions, paymentConfirmOpen, setPaymentConfirmOpen, setPaymentToast }) {
+function QuickPanel({ type, closePanel, currentUser, refreshAccountData, selectedFundingSource, setSelectedFundingSource, fundingMessage, setFundingMessage, addMoneyStep, setAddMoneyStep, addMoneyAmount, setAddMoneyAmount, addMoneyNote, setAddMoneyNote, addMoneyError, setAddMoneyError, billCategory, setBillCategory, selectedBiller, setSelectedBiller, billMessage, setBillMessage, paymentConfirmOpen, setPaymentConfirmOpen, setPaymentToast }) {
   const visibleBillers = useMemo(() => billers.filter((biller) => billCategory === 'All' || biller[1] === billCategory), [billCategory]);
   const selectedBill = useMemo(() => billers.find(([name]) => name === selectedBiller), [selectedBiller]);
   const selectedBillAmount = selectedBill ? parseMoneyValue(selectedBill[2]) : null;
   const title = type === 'addMoney' ? 'Add Money' : type === 'payBills' ? 'Pay Bills' : 'Investments';
   const subtitle = type === 'addMoney' ? 'Choose how you want to fund your Zephyr balance.' : type === 'payBills' ? 'Choose a biller or service to pay from your Zephyr account.' : 'Market data is mocked in this UI sandbox.';
+  const [panelLoading, setPanelLoading] = useState(false);
 
   const continueAddMoney = useCallback(() => {
     if (!selectedFundingSource) return;
@@ -616,16 +793,34 @@ function QuickPanel({ type, closePanel, selectedFundingSource, setSelectedFundin
     setAddMoneyStep('details');
   }, [selectedFundingSource, setAddMoneyError, setAddMoneyStep, setFundingMessage]);
 
-  const confirmAddMoney = useCallback(() => {
+  const confirmAddMoney = useCallback(async () => {
+    const username = getSessionUsername(currentUser);
     const amount = Number(addMoneyAmount);
+    if (!username) {
+      setAddMoneyError('Sign in before adding money.');
+      setFundingMessage('');
+      return;
+    }
     if (!Number.isFinite(amount) || amount <= 0) {
       setAddMoneyError('Enter a valid amount.');
       setFundingMessage('');
       return;
     }
     setAddMoneyError('');
-    setFundingMessage(`Prototype mode: ${formatUSD(amount)} add-money request prepared from ${selectedFundingSource}.`);
-  }, [addMoneyAmount, selectedFundingSource, setAddMoneyError, setFundingMessage]);
+    setFundingMessage('');
+    setPanelLoading(true);
+    try {
+      const result = await bankingApi.deposit(username, amount);
+      await refreshAccountData({ allowFallback: false });
+      setFundingMessage(`${typeof result === 'string' ? result : 'Deposit successful'} from ${selectedFundingSource}.`);
+      setPaymentToast({ title: 'Deposit successful', message: `${formatUSD(amount)} added to your balance.` });
+      closePanel();
+    } catch (error) {
+      setAddMoneyError(error instanceof Error ? error.message : 'Deposit failed.');
+    } finally {
+      setPanelLoading(false);
+    }
+  }, [addMoneyAmount, closePanel, currentUser, refreshAccountData, selectedFundingSource, setAddMoneyError, setFundingMessage, setPaymentToast]);
 
   const openPaymentConfirmation = useCallback(() => {
     if (!selectedBill) {
@@ -640,34 +835,43 @@ function QuickPanel({ type, closePanel, selectedFundingSource, setSelectedFundin
     setPaymentConfirmOpen(true);
   }, [selectedBill, selectedBillAmount, setBillMessage, setPaymentConfirmOpen]);
 
-  const confirmPayment = useCallback(() => {
+  const confirmPayment = useCallback(async () => {
+    const username = getSessionUsername(currentUser);
     if (!selectedBill || selectedBillAmount === null) return;
-    if (selectedBillAmount > balance) {
-      setBillMessage('Insufficient balance for this payment.');
-      setPaymentConfirmOpen(false);
+    if (!username) {
+      setBillMessage('Sign in before paying bills.');
       return;
     }
-    setBalance((current) => Number((current - selectedBillAmount).toFixed(2)));
-    setRecentTransactions((current) => [{ name: selectedBill[0], amount: -selectedBillAmount, date: 'Today', type: 'spending', category: selectedBill[1] }, ...current]);
-    setPaymentToast({ title: 'Payment successful', message: `${selectedBill[0]} paid successfully.` });
-    setPaymentConfirmOpen(false);
-    closePanel();
-  }, [balance, closePanel, selectedBill, selectedBillAmount, setBalance, setBillMessage, setPaymentConfirmOpen, setPaymentToast, setRecentTransactions]);
+    setPanelLoading(true);
+    setBillMessage('');
+    try {
+      const result = await bankingApi.withdraw(username, selectedBillAmount);
+      await refreshAccountData({ allowFallback: false });
+      setPaymentToast({ title: 'Payment successful', message: `${selectedBill[0]} paid successfully. ${typeof result === 'string' ? result : ''}`.trim() });
+      setPaymentConfirmOpen(false);
+      closePanel();
+    } catch (error) {
+      setBillMessage(error instanceof Error ? error.message : 'Payment failed.');
+      setPaymentConfirmOpen(false);
+    } finally {
+      setPanelLoading(false);
+    }
+  }, [closePanel, currentUser, refreshAccountData, selectedBill, selectedBillAmount, setBillMessage, setPaymentConfirmOpen, setPaymentToast]);
 
-  return <div className="quick-panel-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closePanel(); }}><section className="quick-panel glass"><button className="auth-close" onClick={closePanel} type="button" aria-label="Close panel">x</button><div className="panel-hero"><p>Prototype panel</p><h2>{title}</h2><span>{subtitle}</span></div>{type === 'addMoney' && <><div className="step-indicator"><span className={addMoneyStep === 'source' ? 'active' : ''}>1 Source</span><span className={addMoneyStep === 'details' ? 'active' : ''}>2 Amount</span></div>{addMoneyStep === 'source' ? <><div className="option-grid">{fundingSources.map(([name, description, icon]) => <button className={selectedFundingSource === name ? 'option-card selected' : 'option-card'} key={name} onClick={() => { setSelectedFundingSource(name); setFundingMessage(''); setAddMoneyError(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{description}</small></button>)}</div><button className="btn btn-primary full-width panel-action" disabled={!selectedFundingSource} onClick={continueAddMoney} type="button">Continue</button></> : <><div className="add-money-details"><h3>Add from {selectedFundingSource}</h3><p>Enter the amount you want to add to your Zephyr balance.</p><label>Amount<input value={addMoneyAmount} onChange={(event) => { setAddMoneyAmount(event.target.value); setAddMoneyError(''); }} inputMode="decimal" placeholder="0.00" /></label><label>Optional note/reference<textarea value={addMoneyNote} onChange={(event) => setAddMoneyNote(event.target.value)} placeholder="Reference note" /></label></div>{addMoneyError && <p className="panel-message error">{addMoneyError}</p>}{fundingMessage && <p className="panel-message">{fundingMessage}</p>}<div className="panel-actions split"><button className="btn btn-secondary" onClick={() => { setAddMoneyStep('source'); setAddMoneyError(''); setFundingMessage(''); }} type="button">Back</button><button className="btn btn-primary" onClick={confirmAddMoney} type="button">Confirm Add Money</button></div></>}</>}{type === 'payBills' && <><div className="filter-tabs panel-filters">{['All', 'Subscriptions', 'Shopping', 'Cloud', 'Crypto', 'Utilities'].map((category) => <button className={billCategory === category ? 'active' : ''} key={category} onClick={() => { setBillCategory(category); setSelectedBiller(''); setBillMessage(''); setPaymentConfirmOpen(false); }} type="button">{category}</button>)}</div><div className="biller-grid">{visibleBillers.map(([name, category, amount, icon]) => <button className={selectedBiller === name ? 'biller-card selected' : 'biller-card'} key={name} onClick={() => { setSelectedBiller(name); setBillMessage(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{category}</small><b>{amount}</b></button>)}</div>{billMessage && <p className={billMessage.startsWith('Insufficient') || billMessage.startsWith('Select') || billMessage.startsWith('This') ? 'panel-message error' : 'panel-message'}>{billMessage}</p>}<button className="btn btn-primary full-width panel-action" onClick={openPaymentConfirmation} type="button">Pay Selected</button>{paymentConfirmOpen && selectedBill && <PaymentConfirmModal billerName={selectedBill[0]} amount={selectedBillAmount} onCancel={() => setPaymentConfirmOpen(false)} onConfirm={confirmPayment} />}</>}{type === 'investment' && <><div className="investment-panel-summary"><strong>$12,840.22</strong><span>+2.4% today</span></div><MiniChart large /><div className="watchlist-rows">{watchlist.map(([symbol, change]) => <div key={symbol}><span>{symbol}</span><b className={change.startsWith('+') ? 'positive' : 'negative'}>{change}</b><button disabled type="button">Prototype</button></div>)}</div><p className="panel-message">Market data is mocked in this UI sandbox.</p></>}</section></div>;
+  return <div className="quick-panel-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !panelLoading) closePanel(); }}><section className="quick-panel glass"><button className="auth-close" onClick={closePanel} disabled={panelLoading} type="button" aria-label="Close panel">x</button><div className="panel-hero"><p>{type === 'investment' ? 'Prototype panel' : 'Connected to Spring API'}</p><h2>{title}</h2><span>{subtitle}</span></div>{type === 'addMoney' && <><div className="step-indicator"><span className={addMoneyStep === 'source' ? 'active' : ''}>1 Source</span><span className={addMoneyStep === 'details' ? 'active' : ''}>2 Amount</span></div>{addMoneyStep === 'source' ? <><div className="option-grid">{fundingSources.map(([name, description, icon]) => <button className={selectedFundingSource === name ? 'option-card selected' : 'option-card'} key={name} onClick={() => { setSelectedFundingSource(name); setFundingMessage(''); setAddMoneyError(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{description}</small></button>)}</div><button className="btn btn-primary full-width panel-action" disabled={!selectedFundingSource} onClick={continueAddMoney} type="button">Continue</button></> : <><div className="add-money-details"><h3>Add from {selectedFundingSource}</h3><p>Enter the amount you want to add to your Zephyr balance.</p><label>Amount<input value={addMoneyAmount} onChange={(event) => { setAddMoneyAmount(event.target.value); setAddMoneyError(''); }} inputMode="decimal" placeholder="0.00" disabled={panelLoading} /></label><label>Optional note/reference<textarea value={addMoneyNote} onChange={(event) => setAddMoneyNote(event.target.value)} placeholder="Not sent: backend deposit accepts amount only" disabled={panelLoading} /></label></div>{addMoneyError && <p className="panel-message error">{addMoneyError}</p>}{fundingMessage && <p className="panel-message">{fundingMessage}</p>}<div className="panel-actions split"><button className="btn btn-secondary" disabled={panelLoading} onClick={() => { setAddMoneyStep('source'); setAddMoneyError(''); setFundingMessage(''); }} type="button">Back</button><button className="btn btn-primary" disabled={panelLoading} onClick={confirmAddMoney} type="button">{panelLoading ? 'Depositing...' : 'Confirm Add Money'}</button></div></>}</>}{type === 'payBills' && <><div className="filter-tabs panel-filters">{['All', 'Subscriptions', 'Shopping', 'Cloud', 'Crypto', 'Utilities'].map((category) => <button className={billCategory === category ? 'active' : ''} key={category} onClick={() => { setBillCategory(category); setSelectedBiller(''); setBillMessage(''); setPaymentConfirmOpen(false); }} type="button">{category}</button>)}</div><div className="biller-grid">{visibleBillers.map(([name, category, amount, icon]) => <button className={selectedBiller === name ? 'biller-card selected' : 'biller-card'} key={name} onClick={() => { setSelectedBiller(name); setBillMessage(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{category}</small><b>{amount}</b></button>)}</div>{billMessage && <p className="panel-message error">{billMessage}</p>}<button className="btn btn-primary full-width panel-action" disabled={panelLoading} onClick={openPaymentConfirmation} type="button">{panelLoading ? 'Paying...' : 'Pay Selected'}</button>{paymentConfirmOpen && selectedBill && <PaymentConfirmModal billerName={selectedBill[0]} amount={selectedBillAmount} loading={panelLoading} onCancel={() => setPaymentConfirmOpen(false)} onConfirm={confirmPayment} />}</>}{type === 'investment' && <><div className="investment-panel-summary"><strong>$12,840.22</strong><span>+2.4% today</span></div><MiniChart large /><div className="watchlist-rows">{watchlist.map(([symbol, change]) => <div key={symbol}><span>{symbol}</span><b className={change.startsWith('+') ? 'positive' : 'negative'}>{change}</b><button disabled type="button">Prototype</button></div>)}</div><p className="panel-message">Market data is mocked in this UI sandbox.</p></>}</section></div>;
 }
 
-function PaymentConfirmModal({ billerName, amount, onCancel, onConfirm }) {
-  return <div className="payment-confirm-layer" role="presentation"><section className="payment-confirm-modal glass" role="dialog" aria-modal="true" aria-labelledby="payment-confirm-title"><h2 id="payment-confirm-title">Confirm payment</h2><p>You are about to pay {billerName}.</p><strong>{formatUSD(amount)}</strong><span>This is prototype mode.</span><div className="panel-actions"><button className="btn btn-secondary" onClick={onCancel} type="button">Cancel</button><button className="btn btn-primary" onClick={onConfirm} type="button">Confirm Payment</button></div></section></div>;
+function PaymentConfirmModal({ billerName, amount, loading, onCancel, onConfirm }) {
+  return <div className="payment-confirm-layer" role="presentation"><section className="payment-confirm-modal glass" role="dialog" aria-modal="true" aria-labelledby="payment-confirm-title"><h2 id="payment-confirm-title">Confirm payment</h2><p>You are about to pay {billerName}.</p><strong>{formatUSD(amount)}</strong><span>Backend payment uses the withdrawal endpoint.</span><div className="panel-actions"><button className="btn btn-secondary" disabled={loading} onClick={onCancel} type="button">Cancel</button><button className="btn btn-primary" disabled={loading} onClick={onConfirm} type="button">{loading ? 'Confirming...' : 'Confirm Payment'}</button></div></section></div>;
 }
 
-function TransactionsView({ transactionSearch, setTransactionSearch, transactionFilter, setTransactionFilter, filteredTransactions }) {
-  return <main className="dashboard-shell single"><PageHeader title="Transactions" /><section className="data-card glass"><div className="transaction-tools"><input value={transactionSearch} onChange={(event) => setTransactionSearch(event.target.value)} placeholder="Search transactions..." /><div className="filter-tabs">{['all', 'income', 'spending', 'transfers'].map((filter) => <button className={transactionFilter === filter ? 'active' : ''} key={filter} onClick={() => setTransactionFilter(filter)} type="button">{filter === 'all' ? 'All' : filter[0].toUpperCase() + filter.slice(1)}</button>)}</div></div><div className="transaction-list expanded">{filteredTransactions.map((transaction) => <TransactionItem key={transaction.name} transaction={transaction} />)}</div></section></main>;
+function TransactionsView({ transactionSearch, setTransactionSearch, transactionFilter, setTransactionFilter, filteredTransactions, transactionsLoading, transactionsError, usingFallbackData }) {
+  return <main className="dashboard-shell single"><PageHeader title="Transactions" /><section className="data-card glass"><div className="transaction-tools"><input value={transactionSearch} onChange={(event) => setTransactionSearch(event.target.value)} placeholder="Search transactions..." /><div className="filter-tabs">{['all', 'income', 'spending', 'transfers'].map((filter) => <button className={transactionFilter === filter ? 'active' : ''} key={filter} onClick={() => setTransactionFilter(filter)} type="button">{filter === 'all' ? 'All' : filter[0].toUpperCase() + filter.slice(1)}</button>)}</div></div>{transactionsError && <p className="data-status error">API error: {transactionsError}</p>}{usingFallbackData && <p className="data-status">Fallback demo transactions shown</p>}{transactionsLoading ? <TransactionsSkeleton /> : <div className="transaction-list expanded">{filteredTransactions.map((transaction, index) => <TransactionItem key={`${transaction.id || transaction.name}-${index}`} transaction={transaction} />)}</div>}</section></main>;
 }
 
-function TransferView({ transferForm, setTransferForm, transferError, transferSuccess, submitTransfer }) {
+function TransferView({ transferForm, setTransferForm, transferError, transferSuccess, transferLoading, submitTransfer }) {
   const updateField = (field, value) => setTransferForm((current) => ({ ...current, [field]: value }));
-  return <main className="dashboard-shell single"><PageHeader title="Send Money" /><form className="transfer-card glass" onSubmit={submitTransfer}><label>Recipient<input value={transferForm.recipient} onChange={(event) => updateField('recipient', event.target.value)} /></label><label>Amount<input value={transferForm.amount} onChange={(event) => updateField('amount', event.target.value)} inputMode="decimal" /></label><label>Note<textarea value={transferForm.note} onChange={(event) => updateField('note', event.target.value)} /></label>{transferError && <p className="form-message error">{transferError}</p>}{transferSuccess && <p className="form-message success">{transferSuccess}</p>}<button className="btn btn-primary full-width" type="submit">Review Transfer</button></form></main>;
+  return <main className="dashboard-shell single"><PageHeader title="Send Money" /><form className="transfer-card glass" onSubmit={submitTransfer}><label>Recipient<input value={transferForm.recipient} onChange={(event) => updateField('recipient', event.target.value)} disabled={transferLoading} /></label><label>Amount<input value={transferForm.amount} onChange={(event) => updateField('amount', event.target.value)} inputMode="decimal" disabled={transferLoading} /></label><label>Note<textarea value={transferForm.note} onChange={(event) => updateField('note', event.target.value)} placeholder="Not sent: backend transfer accepts recipient and amount only" disabled={transferLoading} /></label>{transferError && <p className="form-message error">{transferError}</p>}{transferSuccess && <p className="form-message success">{transferSuccess}</p>}<button className="btn btn-primary full-width" disabled={transferLoading} type="submit">{transferLoading ? 'Sending...' : 'Review Transfer'}</button></form></main>;
 }
 
 function AnalyticsView() {

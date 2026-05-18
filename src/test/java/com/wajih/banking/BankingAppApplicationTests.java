@@ -104,6 +104,7 @@ class BankingAppApplicationTests {
         registerAndToken("charlie", "password");
 
         mockMvc.perform(post("/api/auth/login")
+                        .header("X-Forwarded-For", ipFor("charlie-login"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"username":"charlie","password":"password"}
@@ -114,8 +115,61 @@ class BankingAppApplicationTests {
                 .andExpect(jsonPath("$.user.username").value("charlie"));
     }
 
+    @Test
+    void loginRateLimitReturnsTooManyRequests() throws Exception {
+        registerAndToken("limited-user", "password");
+        String clientIp = "203.0.113.50";
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", clientIp)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"username":"limited-user","password":"wrong-password"}
+                                    """))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mockMvc.perform(post("/api/auth/login")
+                        .header("X-Forwarded-For", clientIp)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"limited-user","password":"wrong-password"}
+                                """))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Too many requests. Please try again later."))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void balanceCacheInvalidatesAfterDeposit() throws Exception {
+        String token = registerAndToken("cache-user", "password");
+
+        mockMvc.perform(get("/api/balance/cache-user")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(0.0));
+
+        mockMvc.perform(post("/api/deposit/cache-user")
+                        .header("Authorization", bearer(token))
+                        .header("X-Forwarded-For", "203.0.113.60")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":42.00,"source":"Bank Account","note":"Cache invalidation"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(get("/api/balance/cache-user")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(42.0));
+    }
+
     private String registerAndToken(String username, String password) throws Exception {
         String response = mockMvc.perform(post("/api/auth/register")
+                        .header("X-Forwarded-For", ipFor(username))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"username":"%s","password":"%s"}
@@ -134,5 +188,10 @@ class BankingAppApplicationTests {
 
     private String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    private String ipFor(String value) {
+        int host = Math.abs(value.hashCode() % 200) + 1;
+        return "198.51.100." + host;
     }
 }

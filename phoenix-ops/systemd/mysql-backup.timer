@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Phoenix-Ops MySQL backup daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30m
+Persistent=true
+Unit=mysql-backup.service
+
+[Install]
+WantedBy=timers.target

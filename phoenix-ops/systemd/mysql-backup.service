@@ -1,0 +1,14 @@
+[Unit]
+Description=Phoenix-Ops MySQL backup
+Documentation=file:/home/ubuntu/ai-banking-app/phoenix-ops/evidence/database-backup-plan.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/ai-banking-app
+Environment=BACKUP_RETENTION_DAYS=7
+ExecStart=/home/ubuntu/ai-banking-app/phoenix-ops/scripts/backup-mysql.sh
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

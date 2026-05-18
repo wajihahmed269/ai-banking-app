@@ -1,6 +1,7 @@
 package com.wajih.banking.config;
 
 import com.wajih.banking.repository.UserRepository;
+import com.wajih.banking.ratelimit.RateLimitingFilter;
 import com.wajih.banking.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -47,7 +48,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             CorsConfigurationSource corsConfigurationSource,
-            JwtAuthenticationFilter jwtAuthenticationFilter
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            RateLimitingFilter rateLimitingFilter
     ) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
@@ -68,6 +70,7 @@ public class SecurityConfig {
                         .anyRequest().permitAll()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(rateLimitingFilter, JwtAuthenticationFilter.class)
                 .build();
     }
 

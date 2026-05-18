@@ -1,0 +1,26 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: banking-app-remediation-webhook
+  namespace: default
+  labels:
+    app: banking-app
+spec:
+  route:
+    groupBy:
+    - alertname
+    - namespace
+    - pod
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 1h
+    receiver: banking-app-remediation-webhook
+    matchers:
+    - name: alertname
+      value: BankingAppDown|BankingAppHighRestarts
+      matchType: =~
+  receivers:
+  - name: banking-app-remediation-webhook
+    webhookConfigs:
+    - url: http://172.31.36.188:9090/alertmanager
+      sendResolved: true

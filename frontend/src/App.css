@@ -331,6 +331,28 @@ input {
   background: rgba(255, 255, 255, 0.095);
 }
 
+.landing-performance-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(2, 2, 3, 0.34);
+}
+
+.nav-links .landing-performance-control button {
+  padding: 6px 8px;
+  font-size: 0.76rem;
+  color: rgba(226, 232, 240, 0.66);
+}
+
+.nav-links .landing-performance-control button.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(34, 211, 238, 0.1));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
 .hero {
   position: relative;
   z-index: 1;
@@ -3447,5 +3469,169 @@ input {
   .chroma-card:hover,
   .magic-bento-card:hover {
     transform: none;
+  }
+}
+
+.app-root {
+  min-height: 100vh;
+  background: #020203;
+}
+
+.performance-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 2, 3, 0.62);
+  backdrop-filter: blur(10px);
+}
+
+.performance-modal {
+  width: min(460px, 100%);
+  border-radius: 24px;
+  padding: 24px;
+}
+
+.performance-kicker {
+  margin: 0 0 8px;
+  color: rgba(245, 158, 11, 0.82);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.performance-modal h2,
+.performance-settings h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.08rem;
+}
+
+.performance-modal p,
+.performance-settings p {
+  margin: 10px 0 0;
+  color: rgba(226, 232, 240, 0.68);
+  line-height: 1.5;
+}
+
+.performance-modal span,
+.performance-settings span {
+  display: block;
+  margin-top: 10px;
+  color: rgba(125, 211, 252, 0.72);
+  font-size: 0.84rem;
+}
+
+.performance-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.performance-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  border-radius: 24px;
+}
+
+.performance-settings-copy {
+  min-width: 0;
+}
+
+.performance-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(2, 2, 3, 0.42);
+}
+
+.performance-segments button {
+  border: 0;
+  border-radius: 999px;
+  padding: 9px 12px;
+  color: rgba(226, 232, 240, 0.68);
+  background: transparent;
+  cursor: pointer;
+}
+
+.performance-segments button.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(34, 211, 238, 0.1));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.performance-lite .background,
+.performance-lite .prism-static-fallback,
+.performance-lite .static-grid-fallback {
+  background:
+    radial-gradient(circle at 74% 26%, rgba(245, 158, 11, 0.09), transparent 24%),
+    radial-gradient(circle at 82% 18%, rgba(34, 211, 238, 0.045), transparent 30%),
+    linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+    linear-gradient(135deg, #020203 0%, #05070d 46%, #000000 100%);
+  background-size: auto, auto, 52px 52px, 52px 52px, auto;
+}
+
+.performance-lite .overlay {
+  background:
+    linear-gradient(90deg, rgba(2, 2, 3, 0.72), rgba(2, 2, 3, 0.18) 54%, rgba(2, 2, 3, 0.34)),
+    linear-gradient(180deg, rgba(2, 2, 3, 0), rgba(2, 2, 3, 0.24));
+}
+
+.performance-lite .glass {
+  background: rgba(9, 11, 18, 0.68);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.performance-lite .section-card:hover,
+.performance-lite .feature-card:hover,
+.performance-lite .dash-profile-trigger:hover,
+.performance-lite .btn:hover,
+.performance-lite .quick-action-card:hover {
+  transform: none;
+}
+
+.performance-lite .hero .headline-gradient,
+.performance-lite .brand-mark,
+.performance-lite .announcement-pill {
+  filter: saturate(0.82);
+}
+
+.performance-lite .auth-modal::before,
+.performance-lite .pc-card::before,
+.performance-lite .pc-card::after {
+  animation: none !important;
+}
+
+.performance-lite .pc-card,
+.performance-lite .reflective-card {
+  transform: none !important;
+  transition: none !important;
+}
+
+@media (max-width: 720px) {
+  .performance-settings {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .performance-segments {
+    border-radius: 18px;
+  }
+
+  .performance-segments button {
+    flex: 1 1 100px;
   }
 }

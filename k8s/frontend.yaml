@@ -17,7 +17,7 @@ spec:
       containers:
         - name: banking-frontend
           image: wajihahmed269/ai-banking-frontend:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           resources:
@@ -35,13 +35,14 @@ metadata:
   labels:
     app: banking-frontend
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: banking-frontend
   ports:
     - name: http
       port: 80
       targetPort: 80
+      nodePort: 30081
 ---
 # Optional ingress. Uncomment and adjust host/class/TLS for your cluster.
 # apiVersion: networking.k8s.io/v1

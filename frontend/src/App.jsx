@@ -149,6 +149,9 @@ const notifications = [
 
 const initialBalance = 24580.9;
 const TOAST_TIMEOUT = 3600;
+const PERFORMANCE_MODE_KEY = 'zephyrPerformanceMode';
+const LITE_SUGGESTION_KEY = 'zephyrLiteSuggestionDismissed';
+const PERFORMANCE_MODES = ['auto', 'full', 'lite'];
 const defaultAiMessages = [{ role: 'assistant', text: 'Sign in to ask Zephyr about your live account activity.' }];
 const welcomeAiMessages = [{ role: 'assistant', text: 'Welcome back. I can now review your live Zephyr account activity.' }];
 const initialNotificationItems = notifications.map((notification, index) => ({
@@ -216,8 +219,8 @@ const schedulePrefetch = (loader) => {
   window.setTimeout(run, 220);
 };
 
-const prefetchAboutChunks = () => schedulePrefetch(() => Promise.all([
-  import('./components/backgrounds/GridScan'),
+const prefetchAboutChunks = (includeHeavyVisuals = true) => schedulePrefetch(() => Promise.all([
+  includeHeavyVisuals ? import('./components/backgrounds/GridScan') : Promise.resolve(),
   import('./components/cards/ProfileCard'),
   import('./components/cards/ChromaGrid'),
 ]));
@@ -295,29 +298,107 @@ function Brand() {
   return <div className="brand"><svg className="brand-mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 15.5c4.6-7.1 9-9.7 14-8.8-2.4 1.9-4.2 4-5.5 6.4 2.2-.3 4.1-.1 5.8.6-4.7 4.2-9.2 5.5-14.3 1.8Z" /></svg><span>ZEPHYR</span></div>;
 }
 
-function usePerformanceMode() {
-  const getMode = useCallback(() => {
-    if (typeof window === 'undefined') return { reducedMotion: false, lowDevice: false };
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    const lowDevice = window.innerWidth < 768 || (navigator.deviceMemory && navigator.deviceMemory <= 4);
-    return { reducedMotion, lowDevice };
-  }, []);
+function getStoredPerformanceMode() {
+  if (typeof window === 'undefined') return 'auto';
+  const storedMode = window.localStorage.getItem(PERFORMANCE_MODE_KEY);
+  return PERFORMANCE_MODES.includes(storedMode) ? storedMode : 'auto';
+}
 
-  const [mode, setMode] = useState(getMode);
+function readDevicePerformance() {
+  if (typeof window === 'undefined') {
+    return { reducedMotion: false, lowMemory: false, lowCpu: false, smallViewport: false };
+  }
+  return {
+    reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+    lowMemory: Boolean(navigator.deviceMemory && navigator.deviceMemory <= 4),
+    lowCpu: Boolean(navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4),
+    smallViewport: window.innerWidth < 768,
+  };
+}
+
+function getDevicePerformanceReason(device, lagDetected) {
+  if (device.reducedMotion) return 'Reduced motion is enabled.';
+  if (lagDetected) return 'Repeated frame delays were detected.';
+  if (device.lowMemory) return 'This device reports limited memory.';
+  if (device.lowCpu) return 'This device reports limited CPU cores.';
+  if (device.smallViewport) return 'Small viewports use lighter visuals by default.';
+  return '';
+}
+
+function usePerformanceMode() {
+  const [performanceMode, setPerformanceModeState] = useState(getStoredPerformanceMode);
+  const [device, setDevice] = useState(readDevicePerformance);
+  const [lagDetected, setLagDetected] = useState(false);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(() => (
+    typeof window !== 'undefined' && window.localStorage.getItem(LITE_SUGGESTION_KEY) === 'true'
+  ));
+
+  const setPerformanceMode = useCallback((nextMode) => {
+    const safeMode = PERFORMANCE_MODES.includes(nextMode) ? nextMode : 'auto';
+    setPerformanceModeState(safeMode);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(PERFORMANCE_MODE_KEY, safeMode);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    const updateMode = () => setMode(getMode());
-    window.addEventListener('resize', updateMode, { passive: true });
-    motionQuery?.addEventListener?.('change', updateMode);
+    const updateDevice = () => setDevice(readDevicePerformance());
+    window.addEventListener('resize', updateDevice, { passive: true });
+    motionQuery?.addEventListener?.('change', updateDevice);
     return () => {
-      window.removeEventListener('resize', updateMode);
-      motionQuery?.removeEventListener?.('change', updateMode);
+      window.removeEventListener('resize', updateDevice);
+      motionQuery?.removeEventListener?.('change', updateDevice);
     };
-  }, [getMode]);
+  }, []);
 
-  return mode;
+  useEffect(() => {
+    if (typeof window === 'undefined' || device.reducedMotion || performanceMode !== 'auto') return undefined;
+    let frame = 0;
+    let slowFrames = 0;
+    let last = performance.now();
+    const stopAt = last + 3200;
+    const sample = (now) => {
+      if (now - last > 80) slowFrames += 1;
+      last = now;
+      if (slowFrames >= 3) {
+        setLagDetected(true);
+        return;
+      }
+      if (now < stopAt) frame = window.requestAnimationFrame(sample);
+    };
+    frame = window.requestAnimationFrame(sample);
+    return () => window.cancelAnimationFrame(frame);
+  }, [device.reducedMotion, performanceMode]);
+
+  const autoLite = device.reducedMotion || device.lowMemory || device.lowCpu || device.smallViewport || lagDetected;
+  const effectivePerformanceMode = device.reducedMotion ? 'lite' : performanceMode === 'auto' ? (autoLite ? 'lite' : 'full') : performanceMode;
+  const devicePerformanceReason = getDevicePerformanceReason(device, lagDetected);
+  const shouldSuggestLiteMode = !device.reducedMotion && !suggestionDismissed && performanceMode === 'auto' && autoLite;
+
+  const dismissLiteSuggestion = useCallback(({ keepFull = false } = {}) => {
+    setSuggestionDismissed(true);
+    if (typeof window !== 'undefined') window.localStorage.setItem(LITE_SUGGESTION_KEY, 'true');
+    if (keepFull) setPerformanceMode('full');
+  }, [setPerformanceMode]);
+
+  return {
+    performanceMode,
+    setPerformanceMode,
+    effectivePerformanceMode,
+    isLiteMode: effectivePerformanceMode === 'lite',
+    reducedMotion: device.reducedMotion,
+    lowDevice: device.lowMemory || device.lowCpu || device.smallViewport || lagDetected,
+    devicePerformanceReason,
+    shouldSuggestLiteMode,
+    dismissLiteSuggestion,
+  };
+}
+
+function LiteModeSuggestionModal({ performance, onSwitchLite, enabled = true }) {
+  if (!enabled || !performance.shouldSuggestLiteMode) return null;
+  return <div className="performance-modal-overlay" role="presentation"><section className="performance-modal glass" role="dialog" aria-modal="true" aria-labelledby="performance-modal-title"><p className="performance-kicker">Performance</p><h2 id="performance-modal-title">Animations may run slowly on this device</h2><p>Switch to Lite Mode for a smoother Zephyr experience. Layout and banking features stay the same.</p>{performance.devicePerformanceReason && <span>{performance.devicePerformanceReason}</span>}<div className="performance-modal-actions"><button className="btn btn-secondary" onClick={() => performance.dismissLiteSuggestion({ keepFull: true })} type="button">Keep Full UI</button><button className="btn btn-primary" onClick={onSwitchLite} type="button">Switch to Lite Mode</button></div></section></div>;
 }
 
 function PremiumSkeleton({ className = '' }) {
@@ -459,6 +540,7 @@ export default function App() {
   const [addMoneyAmount, setAddMoneyAmount] = useState('');
   const [addMoneyNote, setAddMoneyNote] = useState('');
   const [addMoneyError, setAddMoneyError] = useState('');
+  const performance = usePerformanceMode();
 
   const removeToast = useCallback((id) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -469,6 +551,17 @@ export default function App() {
     setToasts((current) => [...current, { id, type, title, message }].slice(-5));
     window.setTimeout(() => removeToast(id), TOAST_TIMEOUT);
   }, [removeToast]);
+
+  const updatePerformanceMode = useCallback((nextMode) => {
+    performance.setPerformanceMode(nextMode);
+    addToast({ type: 'success', title: 'Performance mode updated' });
+  }, [addToast, performance]);
+
+  const switchToLiteMode = useCallback(() => {
+    performance.setPerformanceMode('lite');
+    performance.dismissLiteSuggestion();
+    addToast({ type: 'success', title: 'Performance mode updated' });
+  }, [addToast, performance]);
 
   const copyReceiptReference = useCallback(async (reference) => {
     try {
@@ -717,18 +810,19 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [notificationOpen]);
 
-  return <>
-    {view === 'landing' ? <LandingView openAuth={openAuth} /> : <DashboardView view={view} setView={setView} goLanding={goLanding} showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} balanceLoading={balanceLoading} balanceError={balanceError} recentTransactions={recentTransactions} transactionsLoading={transactionsLoading} transactionsError={transactionsError} usingFallbackData={usingFallbackData} transactionSearch={transactionSearch} setTransactionSearch={setTransactionSearch} transactionFilter={transactionFilter} setTransactionFilter={setTransactionFilter} filteredTransactions={filteredTransactions} transferForm={transferForm} setTransferForm={setTransferForm} transferError={transferError} transferSuccess={transferSuccess} transferLoading={transferLoading} submitTransfer={submitTransfer} aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} aiLoading={aiLoading} sendAiMessage={sendAiMessage} setQuickPanel={openQuickPanel} notificationOpen={notificationOpen} setNotificationOpen={setNotificationOpen} notificationItems={notificationItems} markAllNotificationsRead={markAllNotificationsRead} clearReadNotifications={clearReadNotifications} toggleNotificationRead={toggleNotificationRead} resetDemoView={resetDemoView} addToast={addToast} />}
+  return <div className={`app-root ${performance.isLiteMode ? 'performance-lite' : 'performance-full'}`} data-performance-mode={performance.effectivePerformanceMode}>
+    {view === 'landing' ? <LandingView openAuth={openAuth} performance={performance} updatePerformanceMode={updatePerformanceMode} /> : <DashboardView view={view} setView={setView} goLanding={goLanding} showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} balanceLoading={balanceLoading} balanceError={balanceError} recentTransactions={recentTransactions} transactionsLoading={transactionsLoading} transactionsError={transactionsError} usingFallbackData={usingFallbackData} transactionSearch={transactionSearch} setTransactionSearch={setTransactionSearch} transactionFilter={transactionFilter} setTransactionFilter={setTransactionFilter} filteredTransactions={filteredTransactions} transferForm={transferForm} setTransferForm={setTransferForm} transferError={transferError} transferSuccess={transferSuccess} transferLoading={transferLoading} submitTransfer={submitTransfer} aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} aiLoading={aiLoading} sendAiMessage={sendAiMessage} setQuickPanel={openQuickPanel} notificationOpen={notificationOpen} setNotificationOpen={setNotificationOpen} notificationItems={notificationItems} markAllNotificationsRead={markAllNotificationsRead} clearReadNotifications={clearReadNotifications} toggleNotificationRead={toggleNotificationRead} resetDemoView={resetDemoView} addToast={addToast} performance={performance} updatePerformanceMode={updatePerformanceMode} />}
     {isAuthOpen && <AuthModal authMode={authMode} setAuthMode={setAuthMode} closeAuth={closeAuth} enterDashboard={enterDashboard} addToast={addToast} />}
     {quickPanel && <QuickPanel type={quickPanel} closePanel={closeQuickPanel} currentUser={currentUser} refreshAccountData={refreshAccountData} selectedFundingSource={selectedFundingSource} setSelectedFundingSource={setSelectedFundingSource} fundingMessage={fundingMessage} setFundingMessage={setFundingMessage} addMoneyStep={addMoneyStep} setAddMoneyStep={setAddMoneyStep} addMoneyAmount={addMoneyAmount} setAddMoneyAmount={setAddMoneyAmount} addMoneyNote={addMoneyNote} setAddMoneyNote={setAddMoneyNote} addMoneyError={addMoneyError} setAddMoneyError={setAddMoneyError} billCategory={billCategory} setBillCategory={setBillCategory} selectedBiller={selectedBiller} setSelectedBiller={setSelectedBiller} billMessage={billMessage} setBillMessage={setBillMessage} paymentConfirmOpen={paymentConfirmOpen} setPaymentConfirmOpen={setPaymentConfirmOpen} addToast={addToast} setReceipt={setReceipt} />}
+    <LiteModeSuggestionModal performance={performance} onSwitchLite={switchToLiteMode} enabled={view === 'landing'} />
     <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} onCopy={copyReceiptReference} />
     <ToastViewport toasts={toasts} onClose={removeToast} />
-  </>;
+  </div>;
 }
 
-function LandingView({ openAuth }) {
-  const { reducedMotion, lowDevice } = usePerformanceMode();
-  const enablePrism = !reducedMotion && !lowDevice;
+function LandingView({ openAuth, performance, updatePerformanceMode }) {
+  const { isLiteMode } = performance;
+  const enablePrism = performance.effectivePerformanceMode === 'full';
 
   useEffect(() => {
     prefetchDashboardChunks();
@@ -737,17 +831,17 @@ function LandingView({ openAuth }) {
   return <div className="landing-page">
     <div className="background"><SectionErrorBoundary>{enablePrism ? <Suspense fallback={<PrismFallback />}><Prism animationType="rotate" height={3.5} baseWidth={5.5} scale={4} glow={0.95} noise={0.03} bloom={0.85} hueShift={-0.32} colorFrequency={0.92} timeScale={0.34} offset={{ x: 330, y: 12 }} transparent suspendWhenOffscreen /></Suspense> : <PrismFallback />}</SectionErrorBoundary></div>
     <div className="overlay" />
-    <header className="navbar glass"><Brand /><nav className="nav-links"><a href="#intro">Intro</a><a href="#about" onFocus={prefetchAboutChunks} onMouseEnter={prefetchAboutChunks}>About</a><a href="#features">Features</a><button className="nav-sign-in" onClick={() => openAuth('signin')} type="button">Sign In</button></nav></header>
+    <header className="navbar glass"><Brand /><nav className="nav-links"><a href="#intro">Intro</a><a href="#about" onFocus={() => prefetchAboutChunks(!isLiteMode)} onMouseEnter={() => prefetchAboutChunks(!isLiteMode)}>About</a><a href="#features">Features</a><LandingPerformanceControl performance={performance} updatePerformanceMode={updatePerformanceMode} /><button className="nav-sign-in" onClick={() => openAuth('signin')} type="button">Sign In</button></nav></header>
     <main className="hero"><section className="hero-content"><div className="announcement-pill"><svg className="pill-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7L12 18l-1.7-5.6-5.5-1.7L10.3 9 12 3.5Z" /></svg>Autonomous banking, quietly overengineered</div><h1>Just a Normal <span className="headline-gradient">Banking App</span></h1><p>Absolutely nothing overengineered behind the scenes.</p><div className="hero-actions"><button className="btn btn-primary" onClick={() => openAuth('signin')} type="button"><span>Sign In</span><span className="cta-arrow" aria-hidden="true">&gt;</span></button><a className="btn btn-secondary" href="#intro"><span>Explore Architecture</span><span className="cta-arrow" aria-hidden="true">&gt;</span></a></div></section><TechStrip /></main>
-    <LandingSections />
+    <LandingSections performance={performance} />
   </div>;
 }
 
-function LandingSections() {
+function LandingSections({ performance }) {
   const aboutRef = useRef(null);
   const [aboutActive, setAboutActive] = useState(false);
-  const { reducedMotion, lowDevice } = usePerformanceMode();
-  const enableGridScan = aboutActive && !reducedMotion && !lowDevice;
+  const { isLiteMode } = performance;
+  const enableGridScan = aboutActive && !isLiteMode;
   const enableAboutCards = aboutActive;
 
   useEffect(() => {
@@ -809,8 +903,8 @@ function LandingSections() {
             status="Building Zephyr"
             contactText="GitHub"
             showUserInfo
-            enableTilt={!reducedMotion && !lowDevice}
-            behindGlowEnabled={!reducedMotion}
+            enableTilt={!isLiteMode}
+            behindGlowEnabled={!isLiteMode}
             behindGlowColor="rgba(96, 165, 250, 0.36)"
             innerGradient="linear-gradient(145deg, rgba(99, 102, 241, 0.34) 0%, rgba(14, 165, 233, 0.18) 58%, rgba(2, 2, 3, 0.18) 100%)"
             onContactClick={() => window.open('https://github.com/wajihahmed269', '_blank', 'noopener,noreferrer')}
@@ -899,7 +993,7 @@ function AuthModal({ authMode, setAuthMode, closeAuth, enterDashboard, addToast 
 }
 
 function DashboardView(props) {
-  return <div className="dashboard-page"><DashboardNav view={props.view} setView={props.setView} goLanding={props.goLanding} notificationOpen={props.notificationOpen} setNotificationOpen={props.setNotificationOpen} notificationItems={props.notificationItems} markAllNotificationsRead={props.markAllNotificationsRead} clearReadNotifications={props.clearReadNotifications} toggleNotificationRead={props.toggleNotificationRead} />{props.view === 'dashboard' && <DashboardHome {...props} />}{props.view === 'transactions' && <TransactionsView {...props} />}{props.view === 'transfer' && <TransferView {...props} />}{props.view === 'analytics' && <AnalyticsView />}{props.view === 'profile' && <ProfileView resetDemoView={props.resetDemoView} />}</div>;
+  return <div className="dashboard-page"><DashboardNav view={props.view} setView={props.setView} goLanding={props.goLanding} notificationOpen={props.notificationOpen} setNotificationOpen={props.setNotificationOpen} notificationItems={props.notificationItems} markAllNotificationsRead={props.markAllNotificationsRead} clearReadNotifications={props.clearReadNotifications} toggleNotificationRead={props.toggleNotificationRead} />{props.view === 'dashboard' && <DashboardHome {...props} />}{props.view === 'transactions' && <TransactionsView {...props} />}{props.view === 'transfer' && <TransferView {...props} />}{props.view === 'analytics' && <AnalyticsView />}{props.view === 'profile' && <ProfileView resetDemoView={props.resetDemoView} performance={props.performance} updatePerformanceMode={props.updatePerformanceMode} />}</div>;
 }
 
 function DashboardNav({ view, setView, goLanding, notificationOpen, setNotificationOpen, notificationItems, markAllNotificationsRead, clearReadNotifications, toggleNotificationRead }) {
@@ -1076,8 +1170,26 @@ function AnalyticsView() {
   return <main className="dashboard-shell single"><PageHeader title="Analytics" />{false && <AnalyticsSkeleton />}{stats.length === 0 && bars.length === 0 ? <section className="chart-card glass"><EmptyState title="No analytics yet" message="Spending insights will appear after transactions are available." /></section> : <><div className="analytics-grid">{stats.map(([label, value]) => <section className="stat-card glass" key={label}><span>{label}</span><strong>{value}</strong></section>)}</div><section className="chart-card glass"><h2>Spending Categories</h2>{bars.length === 0 ? <EmptyState title="No spending data" message="Category breakdowns will appear after payments or transfers post." /> : bars.map(([label, width]) => <div className="bar-row" key={label}><span>{label}</span><div><b style={{ width: `${width}%` }} /></div></div>)}</section></>}</main>;
 }
 
-function ProfileView({ resetDemoView }) {
-  return <main className="dashboard-shell single profile-shell"><PageHeader title="Profile & Settings" /><section className="profile-actions glass"><div><h2>Demo controls</h2><p>Reset local presentation state without changing backend account data.</p></div><button className="btn btn-secondary" onClick={resetDemoView} type="button">Reset demo view</button></section><SectionErrorBoundary><Suspense fallback={<ProfileSkeleton />}><section className="profile-layout"><ReflectiveCard image={profileImage} name="Wajih Ahmed" role="DevOps Engineer" handle="@wajihahmed269" status="Building Zephyr" project="Phoenix-Ops / Zephyr" github="https://github.com/wajihahmed269" /><MagicBento items={profileSettings} className="profile-bento" /></section></Suspense></SectionErrorBoundary></main>;
+function LandingPerformanceControl({ performance, updatePerformanceMode }) {
+  const options = [
+    ['auto', 'Auto'],
+    ['full', 'Full'],
+    ['lite', 'Lite'],
+  ];
+  return <div className="landing-performance-control" role="group" aria-label="Performance Mode">{options.map(([mode, label]) => <button className={performance.performanceMode === mode ? 'active' : ''} key={mode} onClick={() => updatePerformanceMode(mode)} type="button" aria-pressed={performance.performanceMode === mode}>{label}</button>)}</div>;
+}
+
+function PerformanceModeControl({ performance, updatePerformanceMode }) {
+  const options = [
+    ['auto', 'Auto', 'Adapts visuals to your device.'],
+    ['full', 'Full Visuals', 'Enables Prism, GridScan, and motion effects.'],
+    ['lite', 'Lite Mode', 'Uses static premium visuals for smoother performance.'],
+  ];
+  return <section className="performance-settings glass"><div className="performance-settings-copy"><h2>Performance Mode</h2><p>{options.find(([mode]) => mode === performance.performanceMode)?.[2]}</p>{performance.devicePerformanceReason && <span>{performance.devicePerformanceReason}</span>}</div><div className="performance-segments" role="group" aria-label="Performance Mode">{options.map(([mode, label]) => <button className={performance.performanceMode === mode ? 'active' : ''} key={mode} onClick={() => updatePerformanceMode(mode)} type="button">{label}</button>)}</div></section>;
+}
+
+function ProfileView({ resetDemoView, performance, updatePerformanceMode }) {
+  return <main className="dashboard-shell single profile-shell"><PageHeader title="Profile & Settings" /><PerformanceModeControl performance={performance} updatePerformanceMode={updatePerformanceMode} /><section className="profile-actions glass"><div><h2>Demo controls</h2><p>Reset local presentation state without changing backend account data.</p></div><button className="btn btn-secondary" onClick={resetDemoView} type="button">Reset demo view</button></section><SectionErrorBoundary><Suspense fallback={<ProfileSkeleton />}><section className="profile-layout"><ReflectiveCard image={profileImage} name="Wajih Ahmed" role="DevOps Engineer" handle="@wajihahmed269" status="Building Zephyr" project="Phoenix-Ops / Zephyr" github="https://github.com/wajihahmed269" /><MagicBento items={profileSettings} className="profile-bento" /></section></Suspense></SectionErrorBoundary></main>;
 }
 
 function PageHeader({ title }) {

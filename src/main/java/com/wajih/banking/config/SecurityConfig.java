@@ -93,8 +93,9 @@ public class SecurityConfig {
     private List<String> resolveOrigins(String configuredOrigins) {
         List<String> defaults = List.of(
                 "http://localhost:5173",
-                "http://51.20.37.39:5173",
-                "http://51.20.37.39"
+                "http://51.21.161.3:5173",
+                "http://51.21.161.3:30081",
+                "http://51.21.161.3"
         );
         if (configuredOrigins == null || configuredOrigins.isBlank()) {
             return defaults;

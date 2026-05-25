@@ -38,7 +38,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: banking-secret
-              key: mysql-username
+              key: mysql-user
         - name: SPRING_DATASOURCE_PASSWORD
           valueFrom:
             secretKeyRef:

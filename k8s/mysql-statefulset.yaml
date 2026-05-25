@@ -49,7 +49,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: banking-secret
-              key: mysql-root-password
+              key: mysql-password
         ports:
         - containerPort: 3306
         resources:

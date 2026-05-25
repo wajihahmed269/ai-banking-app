@@ -155,6 +155,7 @@ jobs:
           PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
+          trap 'rm -f private_key.pem banking-app.rendered.yaml' EXIT
           echo "$PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
           IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
@@ -171,7 +172,6 @@ jobs:
             kubectl apply -f /tmp/banking-app.yaml
             kubectl rollout status deployment/banking-app --timeout=300s
           EOF
-          rm -f private_key.pem banking-app.rendered.yaml
 
   # Gate 9: DAST
   dast:
@@ -238,6 +238,7 @@ jobs:
         env:
           PRIVATE_KEY: ${{ secrets.AZURE_VM_SSH_KEY }}
         run: |
+          trap 'rm -f azure_key.pem' EXIT
           echo "$PRIVATE_KEY" > azure_key.pem
           chmod 600 azure_key.pem
           ssh -o StrictHostKeyChecking=no -i azure_key.pem ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }} << 'ENDSSH'
@@ -268,4 +269,3 @@ jobs:
             OLLAMA_URL=$OLLAMA_URL \
             docker compose up -d --force-recreate
           ENDSSH
-          rm -f azure_key.pem

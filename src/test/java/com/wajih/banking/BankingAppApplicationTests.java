@@ -43,7 +43,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/deposit/alice")
                         .header("Authorization", bearer(aliceToken))
-                        .header("Idempotency-Key", "alice-deposit-1")
+                        .header("Idempotency-Key", "test-a")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"amount":100.00,"source":"Bank Account","note":"Initial funding"}
@@ -55,7 +55,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/transfer/alice")
                         .header("Authorization", bearer(aliceToken))
-                        .header("Idempotency-Key", "alice-transfer-1")
+                        .header("Idempotency-Key", "test-b")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"toUsername":"bob","amount":25.00,"note":"Dinner"}
@@ -67,7 +67,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/payments/alice")
                         .header("Authorization", bearer(aliceToken))
-                        .header("Idempotency-Key", "alice-payment-1")
+                        .header("Idempotency-Key", "test-c")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -155,7 +155,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/deposit/cache-user")
                         .header("Authorization", bearer(token))
-                        .header("Idempotency-Key", "cache-deposit-1")
+                        .header("Idempotency-Key", "test-a")
                         .header("X-Forwarded-For", "203.0.113.60")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -177,7 +177,7 @@ class BankingAppApplicationTests {
         for (int i = 0; i < 2; i++) {
             mockMvc.perform(post("/api/deposit/idem-user")
                             .header("Authorization", bearer(token))
-                            .header("Idempotency-Key", "deposit-key-1")
+                            .header("Idempotency-Key", "test-a")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"amount":75.00,"source":"Bank Account","note":"Retry safe"}
@@ -199,7 +199,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/deposit/idem-conflict")
                         .header("Authorization", bearer(token))
-                        .header("Idempotency-Key", "deposit-conflict-key")
+                        .header("Idempotency-Key", "test-a")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"amount":25.00,"source":"Bank Account"}
@@ -208,7 +208,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/deposit/idem-conflict")
                         .header("Authorization", bearer(token))
-                        .header("Idempotency-Key", "deposit-conflict-key")
+                        .header("Idempotency-Key", "test-a")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"amount":26.00,"source":"Bank Account"}
@@ -243,7 +243,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/deposit/validation-user")
                         .header("Authorization", bearer(token))
-                        .header("Idempotency-Key", "invalid-scale")
+                        .header("Idempotency-Key", "test-a")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"amount":10.123,"source":"Bank Account"}
@@ -253,7 +253,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/deposit/validation-user")
                         .header("Authorization", bearer(token))
-                        .header("Idempotency-Key", "invalid-zero")
+                        .header("Idempotency-Key", "test-b")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"amount":0.00,"source":"Bank Account"}
@@ -274,7 +274,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/withdraw/withdraw-user")
                         .header("Authorization", bearer(token))
-                        .header("Idempotency-Key", "withdraw-too-much")
+                        .header("Idempotency-Key", "test-a")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"amount":5.00,"category":"ATM"}
@@ -300,7 +300,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/deposit/notify-user")
                         .header("Authorization", bearer(token))
-                        .header("Idempotency-Key", "notify-deposit")
+                        .header("Idempotency-Key", "test-a")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"amount":15.00,"source":"Bank Account"}

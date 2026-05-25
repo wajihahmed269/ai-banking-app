@@ -155,14 +155,19 @@ jobs:
           PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
+          set -euo pipefail
           trap 'rm -f private_key.pem banking-app.rendered.yaml' EXIT
           echo "$PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
+          : "${EC2_HOST:?EC2_HOST is required}"
+          : "${EC2_USER:?EC2_USER is required}"
           IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
           ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           sed "s|PLACEHOLDER_IMAGE|${IMAGE_URI}|g" k8s/banking-app.yaml > banking-app.rendered.yaml
-          scp -o StrictHostKeyChecking=no -i private_key.pem banking-app.rendered.yaml ${{ env.EC2_USER }}@${{ env.EC2_HOST }}:/tmp/banking-app.yaml
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ env.EC2_USER }}@${{ env.EC2_HOST }} << EOF
+          test -s banking-app.rendered.yaml
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST "cat > /tmp/banking-app.yaml" < banking-app.rendered.yaml
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST "test -s /tmp/banking-app.yaml"
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST << EOF
             set -euo pipefail
             kubectl create secret docker-registry ecr-secret \
               --docker-server=${ECR_REGISTRY} \

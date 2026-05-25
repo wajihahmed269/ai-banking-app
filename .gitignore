@@ -33,3 +33,15 @@ build/
 .vscode/
 __pycache__/
 phoenix-ops/evidence/*.log
+
+### Secrets ###
+.env
+.env.*
+!.env.example
+k8s/secret.yaml
+k8s/*.secret.yaml
+**/secrets.local.yaml
+*.pem
+*.key
+id_rsa
+id_rsa.pub

@@ -115,20 +115,23 @@ input {
 .static-grid-fallback {
   width: 100%;
   height: 100%;
+  transform: none;
+  filter: none;
+  background-position: center;
   background:
     radial-gradient(circle at 72% 26%, rgba(91, 141, 239, 0.14), transparent 28%),
     radial-gradient(circle at 82% 18%, rgba(139, 92, 246, 0.11), transparent 32%),
     linear-gradient(rgba(147, 197, 253, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(147, 197, 253, 0.03) 1px, transparent 1px),
     #020203;
-  background-size: auto, auto, 44px 44px, 44px 44px, auto;
+  background-size: auto, auto, 40px 40px, 40px 40px, auto;
 }
 
 .static-grid-fallback {
   position: absolute;
   inset: 0;
   opacity: 0.76;
-  mask-image: radial-gradient(circle at 50% 42%, #000 0, transparent 76%);
+  mask-image: radial-gradient(circle at 50% 42%, #000 0, #000 48%, transparent 78%);
 }
 
 .skeleton-card {
@@ -332,25 +335,101 @@ input {
 }
 
 .landing-performance-control {
-  display: flex;
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
+}
+
+.nav-links .landing-performance-button {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(226, 232, 240, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  background: rgba(2, 2, 3, 0.34);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025)),
+    rgba(2, 2, 3, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.nav-links .landing-performance-control button {
-  padding: 6px 8px;
-  font-size: 0.76rem;
-  color: rgba(226, 232, 240, 0.66);
-}
-
-.nav-links .landing-performance-control button.active {
+.nav-links .landing-performance-button:hover,
+.nav-links .landing-performance-button.active {
   color: #ffffff;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(34, 211, 238, 0.1));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border-color: rgba(147, 197, 253, 0.22);
+  background:
+    linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(34, 211, 238, 0.09)),
+    rgba(2, 2, 3, 0.58);
+}
+
+.landing-performance-popover {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 35;
+  width: min(340px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.072), rgba(255, 255, 255, 0.026)),
+    rgba(6, 8, 15, 0.92);
+  animation: performancePopoverIn 150ms ease both;
+}
+
+.landing-performance-head p {
+  margin: 0 0 5px;
+  color: rgba(245, 158, 11, 0.78);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.landing-performance-head h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.02rem;
+}
+
+.landing-performance-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.nav-links .landing-performance-options button {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.nav-links .landing-performance-options button.active {
+  border-color: rgba(147, 197, 253, 0.22);
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.landing-performance-options span {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 850;
+}
+
+.landing-performance-options small,
+.landing-performance-note {
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.landing-performance-note {
+  margin: 12px 0 0;
 }
 
 .hero {
@@ -1751,14 +1830,29 @@ input {
   background: transparent;
 }
 
+.dashboard-notification-row {
+  position: relative;
+  z-index: 95;
+  width: min(1240px, 100%);
+  margin: 0 auto 20px;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.dashboard-notification-row .notification-panel {
+  width: min(368px, 100%);
+  pointer-events: auto;
+}
+
 .notification-panel {
-  position: absolute;
-  top: calc(100% + 12px);
-  right: 12px;
+  position: sticky;
+  top: auto;
+  right: auto;
   z-index: 100;
   width: min(368px, calc(100vw - 32px));
-  max-height: min(560px, calc(100vh - 116px));
-  overflow-y: auto;
+  max-height: min(430px, calc(100vh - 136px));
+  overflow: hidden;
   padding: 16px;
   border-radius: 24px;
   border-color: rgba(255, 255, 255, 0.12);
@@ -1812,6 +1906,10 @@ input {
 .notification-list {
   display: grid;
   gap: 10px;
+  max-height: min(260px, calc(100vh - 320px));
+  overflow-y: auto;
+  padding-right: 2px;
+  overscroll-behavior: contain;
 }
 
 .notification-actions {
@@ -1985,6 +2083,18 @@ input {
 .section-error p {
   margin: 0;
   color: rgba(226, 232, 240, 0.62);
+}
+
+@keyframes performancePopoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes notificationIn {
@@ -3241,12 +3351,13 @@ input {
     flex-wrap: wrap;
   }
 
-  .notification-panel {
-    position: fixed;
-    top: 86px;
-    right: 12px;
-    left: 12px;
-    width: auto;
+  .dashboard-notification-row {
+    margin-top: 0;
+    justify-content: stretch;
+  }
+
+  .dashboard-notification-row .notification-panel {
+    width: 100%;
     max-height: calc(100vh - 108px);
   }
 

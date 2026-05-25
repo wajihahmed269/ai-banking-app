@@ -1,0 +1,6 @@
+import { EmptyState } from '../ui/EmptyState';
+
+export function NotificationPanel({ items, setView, closePanel, markAllRead, clearRead, toggleRead }) {
+  const unreadCount = items.filter((item) => !item.read).length;
+  return <aside className="notification-panel glass" aria-label="Notifications"><div className="notification-panel-head"><div><p>Dashboard</p><h2>Notifications</h2></div><span>{unreadCount}</span></div><div className="notification-actions"><button onClick={markAllRead} disabled={unreadCount === 0} type="button">Mark all read</button><button onClick={clearRead} disabled={!items.some((item) => item.read)} type="button">Clear read</button></div>{items.length === 0 ? <EmptyState title="No notifications" message="System and account alerts will appear here." /> : <div className="notification-list">{items.map((item) => <article className={`notification-item ${item.status} ${item.read ? 'read' : 'unread'}`} key={item.id}><span className="notification-dot" /><div><div className="notification-meta"><h3>{item.title}</h3><button onClick={() => toggleRead(item.id)} type="button">{item.read ? 'Unread' : 'Read'}</button></div><p>{item.description}</p><small>{item.status}</small></div></article>)}</div>}<button className="notification-footer" onClick={() => { setView('analytics'); closePanel(); }} type="button">View system events</button></aside>;
+}

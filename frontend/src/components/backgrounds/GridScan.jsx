@@ -473,9 +473,8 @@ export const GridScan = ({
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
     scene.add(quad);
 
-    let composer = null;
     if (enablePost) {
-      composer = new EffectComposer(renderer);
+      const composer = new EffectComposer(renderer);
       composerRef.current = composer;
       const renderPass = new RenderPass(scene, camera);
       composer.addPass(renderPass);
@@ -666,8 +665,8 @@ export const GridScan = ({
 
   useEffect(() => {
     if (!enableWebcam) {
-      setModelsReady(false);
-      return undefined;
+      const timer = window.setTimeout(() => setModelsReady(false), 0);
+      return () => window.clearTimeout(timer);
     }
 
     let canceled = false;

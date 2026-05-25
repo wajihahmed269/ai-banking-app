@@ -1,6 +1,7 @@
 package com.wajih.banking.dto;
 
 import com.wajih.banking.entity.Transaction;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -11,7 +12,7 @@ public class TransactionResponse {
 
     private Long id;
     private String type;
-    private Double amount;
+    private BigDecimal amount;
     private LocalDateTime timestamp;
     private String source;
     private String note;

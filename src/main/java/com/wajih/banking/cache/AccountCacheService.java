@@ -1,6 +1,7 @@
 package com.wajih.banking.cache;
 
 import com.wajih.banking.entity.Transaction;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -14,10 +15,10 @@ public class AccountCacheService {
     private static final Duration BALANCE_TTL = Duration.ofSeconds(15);
     private static final Duration TRANSACTIONS_TTL = Duration.ofSeconds(30);
 
-    private final Map<String, CacheEntry<Double>> balanceCache = new ConcurrentHashMap<>();
+    private final Map<String, CacheEntry<BigDecimal>> balanceCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry<List<Transaction>>> transactionCache = new ConcurrentHashMap<>();
 
-    public Double getBalance(String username, Supplier<Double> loader) {
+    public BigDecimal getBalance(String username, Supplier<BigDecimal> loader) {
         return get(balanceCache, username, BALANCE_TTL, loader);
     }
 

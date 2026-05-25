@@ -33,7 +33,7 @@ public class AuthController {
         User user = new User();
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setBalance(0.0);
+        user.setBalance(java.math.BigDecimal.ZERO);
         userRepository.save(user);
 
         String token = jwtService.generateToken(username);

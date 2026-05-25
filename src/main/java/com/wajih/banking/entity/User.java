@@ -1,6 +1,7 @@
 package com.wajih.banking.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import lombok.Data;
 
 @Data
@@ -18,6 +19,6 @@ public class User {
     @Column(nullable = false)
     private String password;
 
-    @Column(nullable = false)
-    private Double balance = 0.0;
+    @Column(nullable = false, precision = 19, scale = 2)
+    private BigDecimal balance = BigDecimal.ZERO;
 }

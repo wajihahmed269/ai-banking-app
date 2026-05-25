@@ -1,6 +1,7 @@
 package com.wajih.banking.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -16,8 +17,8 @@ public class Transaction {
     @Column(nullable = false)
     private String type;
 
-    @Column(nullable = false)
-    private Double amount;
+    @Column(nullable = false, precision = 19, scale = 2)
+    private BigDecimal amount;
 
     private String source;
 

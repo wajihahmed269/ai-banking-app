@@ -1,7 +1,6 @@
 package com.wajih.banking;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -44,6 +43,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/deposit/alice")
                         .header("Authorization", bearer(aliceToken))
+                        .header("Idempotency-Key", "alice-deposit-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"amount":100.00,"source":"Bank Account","note":"Initial funding"}
@@ -55,6 +55,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/transfer/alice")
                         .header("Authorization", bearer(aliceToken))
+                        .header("Idempotency-Key", "alice-transfer-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"toUsername":"bob","amount":25.00,"note":"Dinner"}
@@ -66,6 +67,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/payments/alice")
                         .header("Authorization", bearer(aliceToken))
+                        .header("Idempotency-Key", "alice-payment-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -86,7 +88,7 @@ class BankingAppApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value(25.0));
 
-        when(aiService.chat(eq("How am I doing?"), anyDouble(), any())).thenReturn("Your account looks healthy.");
+        when(aiService.chat(eq("How am I doing?"), any(), any())).thenReturn("Your account looks healthy.");
 
         mockMvc.perform(post("/api/ai/chat/alice")
                         .header("Authorization", bearer(aliceToken))
@@ -153,6 +155,7 @@ class BankingAppApplicationTests {
 
         mockMvc.perform(post("/api/deposit/cache-user")
                         .header("Authorization", bearer(token))
+                        .header("Idempotency-Key", "cache-deposit-1")
                         .header("X-Forwarded-For", "203.0.113.60")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -165,6 +168,150 @@ class BankingAppApplicationTests {
                         .header("Authorization", bearer(token)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value(42.0));
+    }
+
+    @Test
+    void duplicateDepositWithSameIdempotencyKeyDoesNotMutateTwice() throws Exception {
+        String token = registerAndToken("idem-user", "password");
+
+        for (int i = 0; i < 2; i++) {
+            mockMvc.perform(post("/api/deposit/idem-user")
+                            .header("Authorization", bearer(token))
+                            .header("Idempotency-Key", "deposit-key-1")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"amount":75.00,"source":"Bank Account","note":"Retry safe"}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(true))
+                    .andExpect(jsonPath("$.data.type").value("DEPOSIT"));
+        }
+
+        mockMvc.perform(get("/api/balance/idem-user")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(75.0));
+    }
+
+    @Test
+    void sameIdempotencyKeyWithDifferentRequestReturnsConflict() throws Exception {
+        String token = registerAndToken("idem-conflict", "password");
+
+        mockMvc.perform(post("/api/deposit/idem-conflict")
+                        .header("Authorization", bearer(token))
+                        .header("Idempotency-Key", "deposit-conflict-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":25.00,"source":"Bank Account"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/deposit/idem-conflict")
+                        .header("Authorization", bearer(token))
+                        .header("Idempotency-Key", "deposit-conflict-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":26.00,"source":"Bank Account"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false));
+
+        mockMvc.perform(get("/api/balance/idem-conflict")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(25.0));
+    }
+
+    @Test
+    void moneyActionWithoutIdempotencyKeyReturnsBadRequest() throws Exception {
+        String token = registerAndToken("missing-idem", "password");
+
+        mockMvc.perform(post("/api/deposit/missing-idem")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":10.00,"source":"Bank Account"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    
+    @Test
+    void invalidMoneyInputsDoNotMutateBalance() throws Exception {
+        String token = registerAndToken("validation-user", "password");
+
+        mockMvc.perform(post("/api/deposit/validation-user")
+                        .header("Authorization", bearer(token))
+                        .header("Idempotency-Key", "invalid-scale")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":10.123,"source":"Bank Account"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
+        mockMvc.perform(post("/api/deposit/validation-user")
+                        .header("Authorization", bearer(token))
+                        .header("Idempotency-Key", "invalid-zero")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":0.00,"source":"Bank Account"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
+        mockMvc.perform(get("/api/balance/validation-user")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(0.0));
+    }
+
+    
+    @Test
+    void insufficientWithdrawDoesNotMutateOrCreateTransaction() throws Exception {
+        String token = registerAndToken("withdraw-user", "password");
+
+        mockMvc.perform(post("/api/withdraw/withdraw-user")
+                        .header("Authorization", bearer(token))
+                        .header("Idempotency-Key", "withdraw-too-much")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":5.00,"category":"ATM"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
+        mockMvc.perform(get("/api/balance/withdraw-user")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(0.0));
+
+        mockMvc.perform(get("/api/transactions/withdraw-user")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    
+    @Test
+    void successfulMoneyActionCreatesScopedNotification() throws Exception {
+        String token = registerAndToken("notify-user", "password");
+
+        mockMvc.perform(post("/api/deposit/notify-user")
+                        .header("Authorization", bearer(token))
+                        .header("Idempotency-Key", "notify-deposit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":15.00,"source":"Bank Account"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/notifications/notify-user")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].type").value("DEPOSIT"))
+                .andExpect(jsonPath("$.data[0].message").value("Your deposit was completed."));
     }
 
     private String registerAndToken(String username, String password) throws Exception {

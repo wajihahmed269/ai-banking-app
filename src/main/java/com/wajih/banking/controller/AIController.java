@@ -35,7 +35,7 @@ public class AIController {
         }
 
         String message = request.getMessage();
-        double balance = bankingService.getBalance(username);
+        var balance = bankingService.getBalance(username);
         List<Transaction> transactions = bankingService.getTransactions(username);
 
         String response = aiService.chat(message, balance, transactions);

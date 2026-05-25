@@ -64,10 +64,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                         .requestMatchers("/", "/dashboard", "/transactions").permitAll()
+                        .requestMatchers("/assets/**", "/favicon.*", "/icons.svg", "/zephyr-logo.png").permitAll()
+                        .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/balance/**", "/api/transactions/**", "/api/deposit/**").authenticated()
                         .requestMatchers("/api/withdraw/**", "/api/transfer/**", "/api/payments/**").authenticated()
-                        .requestMatchers("/api/ai/**").authenticated()
-                        .anyRequest().permitAll()
+                        .requestMatchers("/api/ai/**", "/api/notifications/**", "/api/media/**").authenticated()
+                        .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(rateLimitingFilter, JwtAuthenticationFilter.class)
@@ -81,7 +83,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(resolveOrigins(configuredOrigins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "Idempotency-Key"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(false);
 

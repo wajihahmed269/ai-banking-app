@@ -1,31 +1,38 @@
 package com.wajih.banking.ratelimit;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class RateLimitService {
 
-    private static final long WINDOW_MILLIS = 60_000L;
-
     private final Map<String, Window> windows = new ConcurrentHashMap<>();
-    private final Clock clock;
+    private final Clock clock = Clock.systemUTC();
 
-    public RateLimitService() {
-        this(Clock.systemUTC());
-    }
+    @Value("${rate.limit.enabled:true}")
+    private boolean enabled;
 
-    RateLimitService(Clock clock) {
-        this.clock = clock;
-    }
+    @Value("${rate.limit.capacity:60}")
+    private int defaultCapacity;
 
-    public RateLimitResult consume(String key, int limit) {
+    @Value("${rate.limit.window-seconds:60}")
+    private long windowSeconds;
+
+    public RateLimitResult consume(String key, Integer limitOverride) {
+        int limit = limitOverride == null || limitOverride <= 0 ? Math.max(1, defaultCapacity) : limitOverride;
+        long windowMillis = Math.max(1, Duration.ofSeconds(windowSeconds).toMillis());
+        if (!enabled) {
+            return new RateLimitResult(true, limit, limit, windowMillis / 1000);
+        }
+
         long now = clock.millis();
         Window window = windows.compute(key, (ignored, current) -> {
             if (current == null || now >= current.resetAtMillis()) {
-                return new Window(now + WINDOW_MILLIS, 1);
+                return new Window(now + windowMillis, 1);
             }
             return new Window(current.resetAtMillis(), current.count() + 1);
         });

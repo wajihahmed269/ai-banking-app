@@ -4,28 +4,39 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import javax.crypto.SecretKey;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
+
 public class JwtService {
 
     private static final long EXPIRATION_MILLIS = 24 * 60 * 60 * 1000L;
-    private static final String DEVELOPMENT_SECRET =
-            "zephyr-development-secret-change-me-minimum-32-bytes";
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final SecretKey signingKey;
 
     public JwtService(@Value("${JWT_SECRET:${jwt.secret:}}") String configuredSecret) {
         String secret = configuredSecret == null || configuredSecret.isBlank()
-                ? DEVELOPMENT_SECRET
+                ? generateEphemeralSecret()
                 : configuredSecret;
         this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String generateEphemeralSecret() {
+        byte[] bytes = new byte[32];
+        SECURE_RANDOM.nextBytes(bytes);
+        log.warn("JWT_SECRET is not configured. Using an ephemeral development signing key; existing tokens will be invalid after restart.");
+        return Base64.getEncoder().encodeToString(bytes);
     }
 
     public String generateToken(String username) {

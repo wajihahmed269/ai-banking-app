@@ -23,6 +23,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             new Rule("/api/auth/register", 3, false),
             new Rule("/api/ai/chat/", 20, true),
             new Rule("/api/deposit/", 10, true),
+            new Rule("/api/withdraw/", 10, true),
             new Rule("/api/transfer/", 10, true),
             new Rule("/api/payments/", 10, true)
     );

@@ -4,6 +4,8 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.time.Instant;
@@ -25,11 +27,26 @@ public class JwtService {
 
     private final SecretKey signingKey;
 
-    public JwtService(@Value("${JWT_SECRET:${jwt.secret:}}") String configuredSecret) {
+    public JwtService(
+            @Value("${JWT_SECRET:${jwt.secret:}}") String configuredSecret,
+            @Value("${spring.datasource.url:}") String datasourceUrl,
+            @Value("${spring.datasource.username:}") String datasourceUsername,
+            @Value("${spring.datasource.password:}") String datasourcePassword
+    ) {
         String secret = configuredSecret == null || configuredSecret.isBlank()
-                ? generateEphemeralSecret()
+                ? fallbackSecret(datasourceUrl, datasourceUsername, datasourcePassword)
                 : configuredSecret;
         this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String fallbackSecret(String datasourceUrl, String datasourceUsername, String datasourcePassword) {
+        if (isBlank(datasourceUrl) || isBlank(datasourceUsername) || isBlank(datasourcePassword)) {
+            return generateEphemeralSecret();
+        }
+        log.warn("JWT_SECRET is not configured. Deriving a stable fallback signing key from datasource configuration; configure JWT_SECRET for production.");
+        return Base64.getEncoder().encodeToString(sha256(
+                "zephyr-jwt|" + datasourceUrl + "|" + datasourceUsername + "|" + datasourcePassword
+        ));
     }
 
     private String generateEphemeralSecret() {
@@ -37,6 +54,18 @@ public class JwtService {
         SECURE_RANDOM.nextBytes(bytes);
         log.warn("JWT_SECRET is not configured. Using an ephemeral development signing key; existing tokens will be invalid after restart.");
         return Base64.getEncoder().encodeToString(bytes);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private byte[] sha256(String value) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is not available", exception);
+        }
     }
 
     public String generateToken(String username) {

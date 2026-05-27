@@ -49,10 +49,15 @@ spec:
             secretKeyRef:
               name: banking-secret
               key: ollama-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: banking-secret
+              key: jwt-secret
         - name: OLLAMA_MODEL
           value: "llama3.2:3b"
         - name: FRONTEND_URL
-          value: "http://51.21.161.3:30081,http://51.21.161.3:5173,http://localhost:5173,http://51.21.161.3"
+          value: "PLACEHOLDER_FRONTEND_URL"
         livenessProbe:
           httpGet:
             path: /

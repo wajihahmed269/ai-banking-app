@@ -156,17 +156,60 @@ jobs:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          trap 'rm -f private_key.pem banking-app.rendered.yaml' EXIT
+          trap 'rm -f private_key.pem banking-app.rendered.yaml banking-secret.rendered.yaml' EXIT
           echo "$PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
           : "${EC2_HOST:?EC2_HOST is required}"
           : "${EC2_USER:?EC2_USER is required}"
           IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
           ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-          sed "s|PLACEHOLDER_IMAGE|${IMAGE_URI}|g" k8s/banking-app.yaml > banking-app.rendered.yaml
+          FRONTEND_URL="http://${EC2_HOST}:30081,http://${EC2_HOST},http://localhost:5173"
+
+          SECRET_JSON="$(aws secretsmanager get-secret-value \
+            --secret-id bankapp/prod-secrets \
+            --query SecretString \
+            --output text)"
+          MYSQL_URL="$(jq -r '.MYSQL_URL // .mysql_url // .["mysql-url"] // ""' <<< "$SECRET_JSON")"
+          MYSQL_USER="$(jq -r '.MYSQL_USER // .mysql_user // .["mysql-user"] // ""' <<< "$SECRET_JSON")"
+          MYSQL_PASSWORD="$(jq -r '.MYSQL_PASSWORD // .mysql_password // .["mysql-password"] // ""' <<< "$SECRET_JSON")"
+          OLLAMA_URL="$(jq -r '.OLLAMA_URL // .ollama_url // .["ollama-url"] // ""' <<< "$SECRET_JSON")"
+          JWT_SECRET="$(jq -r '.JWT_SECRET // .jwt_secret // .["jwt-secret"] // ""' <<< "$SECRET_JSON")"
+          for required_secret in MYSQL_URL MYSQL_USER MYSQL_PASSWORD OLLAMA_URL JWT_SECRET; do
+            test -n "${!required_secret}" || { echo "${required_secret} is missing from AWS Secrets Manager secret bankapp/prod-secrets" >&2; exit 1; }
+          done
+          echo "::add-mask::$MYSQL_URL"
+          echo "::add-mask::$MYSQL_USER"
+          echo "::add-mask::$MYSQL_PASSWORD"
+          echo "::add-mask::$OLLAMA_URL"
+          echo "::add-mask::$JWT_SECRET"
+          MYSQL_URL_B64="$(printf '%s' "$MYSQL_URL" | base64 -w0)"
+          MYSQL_USER_B64="$(printf '%s' "$MYSQL_USER" | base64 -w0)"
+          MYSQL_PASSWORD_B64="$(printf '%s' "$MYSQL_PASSWORD" | base64 -w0)"
+          OLLAMA_URL_B64="$(printf '%s' "$OLLAMA_URL" | base64 -w0)"
+          JWT_SECRET_B64="$(printf '%s' "$JWT_SECRET" | base64 -w0)"
+
+          sed -e "s|PLACEHOLDER_IMAGE|${IMAGE_URI}|g" \
+              -e "s|PLACEHOLDER_FRONTEND_URL|${FRONTEND_URL}|g" \
+              k8s/banking-app.yaml > banking-app.rendered.yaml
+          cat > banking-secret.rendered.yaml << SECRET_EOF
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: banking-secret
+            namespace: default
+          type: Opaque
+          data:
+            mysql-url: ${MYSQL_URL_B64}
+            mysql-user: ${MYSQL_USER_B64}
+            mysql-password: ${MYSQL_PASSWORD_B64}
+            ollama-url: ${OLLAMA_URL_B64}
+            jwt-secret: ${JWT_SECRET_B64}
+          SECRET_EOF
           test -s banking-app.rendered.yaml
+          test -s banking-secret.rendered.yaml
           ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST "cat > /tmp/banking-app.yaml" < banking-app.rendered.yaml
-          ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST "test -s /tmp/banking-app.yaml"
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST "cat > /tmp/banking-secret.yaml" < banking-secret.rendered.yaml
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST "test -s /tmp/banking-app.yaml && test -s /tmp/banking-secret.yaml"
           ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST << EOF
             set -euo pipefail
             kubectl create secret docker-registry ecr-secret \
@@ -174,6 +217,7 @@ jobs:
               --docker-username=AWS \
               --docker-password="\$(aws ecr get-login-password --region ${{ env.AWS_REGION }})" \
               --dry-run=client -o yaml | kubectl apply -f -
+            kubectl apply -f /tmp/banking-secret.yaml
             kubectl apply -f /tmp/banking-app.yaml
             kubectl rollout status deployment/banking-app --timeout=600s
           EOF

@@ -175,7 +175,7 @@ jobs:
               --docker-password="\$(aws ecr get-login-password --region ${{ env.AWS_REGION }})" \
               --dry-run=client -o yaml | kubectl apply -f -
             kubectl apply -f /tmp/banking-app.yaml
-            kubectl rollout status deployment/banking-app --timeout=300s
+            kubectl rollout status deployment/banking-app --timeout=600s
           EOF
 
   # Gate 9: DAST

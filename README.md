@@ -1,41 +1,217 @@
-# 💳 WajihBank — AI-Powered Banking App
+# Zephyr
 
-![Java](https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=java)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.0-brightgreen?style=flat-square&logo=springboot)
-![MySQL](https://img.shields.io/badge/MySQL-8.0-blue?style=flat-square&logo=mysql)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker)
-![AWS](https://img.shields.io/badge/AWS-EC2-FF9900?style=flat-square&logo=amazonaws)
+A production-style banking application powered by self-hosted AI.
 
-A full-stack banking web application with an integrated AI assistant that analyzes your balance and transaction history in real time.
+Zephyr is a banking backend I built to get reps on the parts of engineering that most tutorials skip — Kubernetes failure modes, distributed auth, observability, and running AI locally instead of hitting an API.
 
-## Features
-- Deposit and withdraw funds with live balance updates
-- Full transaction history with filters by type and date range
-- AI Banking Assistant powered by Ollama TinyLlama with real account context
-- Secure BCrypt password hashing
-- Fully containerized with Docker Compose
-- Deployed live on AWS EC2
+---
 
-## Tech Stack
-- Backend: Spring Boot 3.5.0, Spring Data JPA, Spring Security
-- Frontend: Thymeleaf, Bootstrap 5
-- Database: MySQL 8.0
-- AI: Ollama + TinyLlama (1B parameters)
-- DevOps: Docker, Docker Compose, AWS EC2
+## Why This Project Exists
 
-## Run with Docker
-1. Clone the repo
-2. Run: ./mvnw clean package -DskipTests
-3. Run: docker compose up --build -d
-4. Open: http://localhost:8080
+Most banking demos stop at auth + CRUD. Zephyr exists to go further.
 
-## How This Was Built
-This project was planned and architected using ChatGPT — breaking down the phases, deciding the tech stack, and mapping out the roadmap.
+The things I actually wanted to understand: how Kubernetes deployments break in production, why JWT auth falls apart across replicas, what it takes to instrument a backend properly, and how to run a local LLM without depending on OpenAI.
 
-The entire execution was done with Claude AI — writing every line of code, debugging errors, setting up Docker, deploying to AWS, and integrating Ollama, all through a live SSH session on EC2.
+This isn't a fake fintech startup. It's an engineering lab with a banking domain.
 
-A real-world example of using AI tools effectively: one for planning, one for building.
+---
 
-## Live Demo
-http://13.63.237.170:8080
-## DevSecOps Pipeline Active
+## Current Features
+
+### Banking
+
+* JWT authentication
+* Balance management, deposits, withdrawals
+* Money transfer with row locking
+* Bill payment flows
+* Transaction history and receipt UI
+* Notification system
+* Dashboard analytics
+
+### Frontend
+
+* Dark UI with responsive dashboard layout
+* Animated landing page
+* Performance/lite mode toggle
+* Transaction search and filtering
+* Glassmorphism-inspired design system
+
+### Backend
+
+* Spring Boot services
+* Transactional money operations with row locking during transfers
+* JWT security flow
+* MySQL persistence
+* Idempotency protection for financial operations
+* Runtime secret integration
+
+### Infrastructure
+
+* Docker-based local development
+* Kubernetes manifests
+* GitHub Actions CI/CD
+* AWS deployment workflows
+* Prometheus, Grafana, and Loki observability stack
+
+### AI
+
+* Self-hosted Ollama integration
+* AI assistant support workflows
+
+---
+
+## Architecture
+
+Zephyr is built with a production-style mindset. Current experiments include:
+
+* Kubernetes-native deployments
+* Runtime secret injection via AWS Secrets Manager
+* Observability-driven debugging
+* Transaction safety and idempotency enforcement
+* Distributed authentication consistency across replicas
+* Backup and recovery with Kubernetes CronJobs
+* Security-focused CI/CD pipelines
+
+This is actively evolving — not a finished product.
+
+---
+
+## Engineering Problems Solved
+
+A lot of the learning here came from things that broke during actual deployment:
+
+* JWT tokens going inconsistent across Kubernetes replicas
+* Secret normalization with AWS Secrets Manager
+* Kubernetes rollout timeouts blocking CI deployments
+* Deployment manifest handoff issues in GitHub Actions
+* Git history cleanup after credential exposure
+* CORS issues across the frontend/backend split
+* Migrating from `double` to `BigDecimal` for money handling
+* Idempotency enforcement on financial transactions
+* Splitting apart a massive frontend App.jsx structure
+
+---
+
+## DevSecOps Pipeline
+
+The CI/CD pipeline runs through GitHub Actions with security checks at each stage:
+
+```text
+Gitleaks → Checkstyle → Semgrep → OWASP Dependency Check
+→ Maven Build → Trivy Container Scan → Push to AWS ECR
+→ Kubernetes Deployment → OWASP ZAP DAST
+```
+
+The pipeline covers:
+
+* Secret scanning
+* Static analysis
+* Dependency auditing
+* Container vulnerability scanning
+* Kubernetes deployment validation
+* Runtime DAST testing
+
+---
+
+## Stack
+
+| Layer          | Tools                         |
+| -------------- | ----------------------------- |
+| Backend        | Spring Boot, JWT, MySQL       |
+| Frontend       | React, Vite                   |
+| Infrastructure | Docker, Kubernetes, Terraform |
+| Observability  | Prometheus, Grafana, Loki     |
+| CI/CD & GitOps | GitHub Actions, Argo CD       |
+| AI             | Ollama                        |
+
+---
+
+## Local Development
+
+```bash
+git clone git@github.com:wajihahmed269/ai-banking-app.git
+cd ai-banking-app
+```
+
+### Backend
+
+```bash
+./mvnw spring-boot:run
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Docker and Kubernetes manifests are included for containerized workflows.
+
+---
+
+## Security Notes
+
+This project is under active development. Work completed so far includes:
+
+* Runtime secret management with AWS Secrets Manager
+* Idempotency protection on transactions
+* Kubernetes secret hygiene
+* Multi-replica JWT consistency fixes
+* Git history cleanup after test credential exposure
+* Security-focused CI/CD validation
+
+If secrets were committed during development, rotate them before any production or public usage.
+
+---
+
+## Deployment
+
+No permanent public deployment is maintained.
+
+The project runs locally or on EC2 for infrastructure testing. Keeping a full Kubernetes environment running continuously during active development is unnecessarily expensive for the current stage of the project.
+
+---
+
+## In Progress
+
+* Frontend architecture cleanup
+* Automatic idempotency key handling
+* Full BigDecimal migration for money operations
+* Backend rate limiting improvements
+* Kubernetes CronJob backups
+* Argo CD GitOps workflows
+* SendGrid and Cloudinary integration
+* AI guardrails for support workflows
+* Observability improvements
+
+---
+
+## What This Project Is Not
+
+Zephyr is not intended to be a production bank or a polished SaaS product.
+
+The purpose of the project is to explore operational engineering problems in a realistic domain:
+
+* Distributed authentication
+* Deployment reliability
+* Runtime secret management
+* Kubernetes behavior under failure
+* Transaction safety
+* DevSecOps workflows
+* AI integration without third-party APIs
+
+The focus is infrastructure maturity and operational learning, not fintech product development.
+
+---
+
+## Contact
+
+Email: [wajih.ahmed100000@gmail.com](mailto:wajih.ahmed100000@gmail.com)
+
+GitHub: [https://github.com/wajihahmed269](https://github.com/wajihahmed269)
+
+LinkedIn: [https://www.linkedin.com/in/wajih-ahmed-269/](https://www.linkedin.com/in/wajih-ahmed-269/)
+
+

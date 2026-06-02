@@ -223,7 +223,7 @@ class BankingAppApplicationTests {
     }
 
     @Test
-    void moneyActionWithoutIdempotencyKeyReturnsBadRequest() throws Exception {
+    void moneyActionWithoutIdempotencyKeyProcessesNormally() throws Exception {
         String token = registerAndToken("missing-idem", "password");
 
         mockMvc.perform(post("/api/deposit/missing-idem")
@@ -232,8 +232,14 @@ class BankingAppApplicationTests {
                         .content("""
                                 {"amount":10.00,"source":"Bank Account"}
                                 """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.type").value("DEPOSIT"));
+
+        mockMvc.perform(get("/api/balance/missing-idem")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(10.0));
     }
 
     

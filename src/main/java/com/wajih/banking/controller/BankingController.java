@@ -12,6 +12,7 @@ import com.wajih.banking.service.IdempotencyService;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -161,12 +162,11 @@ public class BankingController {
             String idempotencyKey,
             DepositRequest request
     ) {
-        IdempotencyResult<ApiResponse> result = idempotencyService.execute(
+        return executeMoneyAction(
                 idempotencyKey,
                 username,
                 "deposit",
                 request,
-                ApiResponse.class,
                 () -> ApiResponse.success("Deposit successful", TransactionResponse.from(bankingService.deposit(
                         username,
                         request.getAmount(),
@@ -174,7 +174,6 @@ public class BankingController {
                         request.getNote()
                 )))
         );
-        return ResponseEntity.status(result.status()).body(result.body());
     }
 
     private ResponseEntity<ApiResponse> withdrawForUsername(
@@ -182,12 +181,11 @@ public class BankingController {
             String idempotencyKey,
             WithdrawRequest request
     ) {
-        IdempotencyResult<ApiResponse> result = idempotencyService.execute(
+        return executeMoneyAction(
                 idempotencyKey,
                 username,
                 "withdraw",
                 request,
-                ApiResponse.class,
                 () -> ApiResponse.success("Withdrawal successful", TransactionResponse.from(bankingService.withdraw(
                         username,
                         request.getAmount(),
@@ -195,7 +193,6 @@ public class BankingController {
                         request.getNote()
                 )))
         );
-        return ResponseEntity.status(result.status()).body(result.body());
     }
 
     private ResponseEntity<ApiResponse> transferForUsername(
@@ -203,12 +200,11 @@ public class BankingController {
             String idempotencyKey,
             TransferRequest request
     ) {
-        IdempotencyResult<ApiResponse> result = idempotencyService.execute(
+        return executeMoneyAction(
                 idempotencyKey,
                 username,
                 "transfer",
                 request,
-                ApiResponse.class,
                 () -> ApiResponse.success("Transfer completed", TransactionResponse.from(bankingService.transfer(
                         username,
                         request.getToUsername(),
@@ -216,7 +212,6 @@ public class BankingController {
                         request.getNote()
                 )))
         );
-        return ResponseEntity.status(result.status()).body(result.body());
     }
 
     private ResponseEntity<ApiResponse> payBillForUsername(
@@ -224,12 +219,11 @@ public class BankingController {
             String idempotencyKey,
             PaymentRequest request
     ) {
-        IdempotencyResult<ApiResponse> result = idempotencyService.execute(
+        return executeMoneyAction(
                 idempotencyKey,
                 username,
                 "payment",
                 request,
-                ApiResponse.class,
                 () -> ApiResponse.success("Payment completed", TransactionResponse.from(bankingService.payBill(
                         username,
                         request.getBiller(),
@@ -238,6 +232,28 @@ public class BankingController {
                         request.getPaymentMethod(),
                         request.getNote()
                 )))
+        );
+    }
+
+    private ResponseEntity<ApiResponse> executeMoneyAction(
+            String idempotencyKey,
+            String username,
+            String action,
+            Object request,
+            Supplier<ApiResponse> operation
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            // TODO: Production money actions should require Idempotency-Key.
+            return ResponseEntity.ok(operation.get());
+        }
+
+        IdempotencyResult<ApiResponse> result = idempotencyService.execute(
+                idempotencyKey,
+                username,
+                action,
+                request,
+                ApiResponse.class,
+                operation
         );
         return ResponseEntity.status(result.status()).body(result.body());
     }

@@ -17,7 +17,7 @@ export function MiniIcon({ type }) {
   </svg>;
 }
 
-class SectionErrorBoundary extends Component {
+export class SectionErrorBoundary extends Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false };

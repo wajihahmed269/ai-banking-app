@@ -7,7 +7,7 @@ import { profileImage, techStack, transactions, fundingSources, billers, watchli
 import { usePerformanceMode } from './hooks/usePerformanceMode';
 import { useToasts } from './hooks/useToasts';
 import { useAccountData } from './hooks/useAccountData';
-import { MiniIcon } from './components/ui/MiniIcon';
+import { MiniIcon, SectionErrorBoundary } from './components/ui/MiniIcon';
 import { LiteModeSuggestionModal, PremiumSkeleton, DashboardSkeleton, TransactionsSkeleton, ProfileSkeleton, AssistantBubbleSkeleton, PrismFallback, AboutProfileFallback, ChromaGridFallback, ProfileViewFallback } from './components/ui/Skeletons';
 import { ToastViewport } from './components/ui/ToastViewport';
 import { EmptyState } from './components/ui/EmptyState';

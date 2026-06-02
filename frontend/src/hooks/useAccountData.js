@@ -12,6 +12,7 @@ export function useAccountData(currentUser) {
   const [balanceError, setBalanceError] = useState('');
   const [transactionsError, setTransactionsError] = useState('');
   const [usingFallbackData, setUsingFallbackData] = useState(false);
+  const [demoDataLoadedFor, setDemoDataLoadedFor] = useState('');
 
   const resetAccountData = useCallback(() => {
     setBalance(0);
@@ -19,6 +20,7 @@ export function useAccountData(currentUser) {
     setBalanceError('');
     setTransactionsError('');
     setUsingFallbackData(false);
+    setDemoDataLoadedFor('');
   }, []);
 
   const refreshAccountData = useCallback(async () => {
@@ -32,9 +34,17 @@ export function useAccountData(currentUser) {
     setUsingFallbackData(false);
 
     if (DEMO_MODE) {
+      if (demoDataLoadedFor === username) {
+        setUsingFallbackData(true);
+        setBalanceLoading(false);
+        setTransactionsLoading(false);
+        return;
+      }
+
       window.setTimeout(() => {
         setBalance(initialBalance);
         setRecentTransactions(transactions);
+        setDemoDataLoadedFor(username);
         setUsingFallbackData(true);
         setBalanceLoading(false);
         setTransactionsLoading(false);
@@ -61,7 +71,7 @@ export function useAccountData(currentUser) {
     } finally {
       setTransactionsLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, demoDataLoadedFor]);
 
   return {
     balance,

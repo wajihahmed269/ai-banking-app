@@ -1,3 +1,5 @@
+import { Component } from 'react';
+
 export function MiniIcon({ type }) {
   return <svg className="mini-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     {type === 'send' && <path d="M5 12h12m0 0-5-5m5 5-5 5" />}

@@ -1,4 +1,4 @@
-import { Component, lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { clearSession, getCurrentUser } from './auth/session';
 import * as bankingApi from './api/bankingApi';
@@ -7,7 +7,8 @@ import { profileImage, techStack, transactions, fundingSources, billers, watchli
 import { usePerformanceMode } from './hooks/usePerformanceMode';
 import { useToasts } from './hooks/useToasts';
 import { useAccountData } from './hooks/useAccountData';
-import { MiniIcon, SectionErrorBoundary } from './components/ui/MiniIcon';
+import { MiniIcon } from './components/ui/MiniIcon';
+import { SectionErrorBoundary } from './components/ui/SectionErrorBoundary';
 import { LiteModeSuggestionModal, PremiumSkeleton, DashboardSkeleton, TransactionsSkeleton, ProfileSkeleton, AssistantBubbleSkeleton, PrismFallback, AboutProfileFallback, ChromaGridFallback, ProfileViewFallback } from './components/ui/Skeletons';
 import { ToastViewport } from './components/ui/ToastViewport';
 import { EmptyState } from './components/ui/EmptyState';

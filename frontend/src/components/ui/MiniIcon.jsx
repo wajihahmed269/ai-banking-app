@@ -1,5 +1,3 @@
-import { Component } from 'react';
-
 export function MiniIcon({ type }) {
   return <svg className="mini-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     {type === 'send' && <path d="M5 12h12m0 0-5-5m5 5-5 5" />}
@@ -15,27 +13,5 @@ export function MiniIcon({ type }) {
     {type === 'logout' && <path d="M10 6H6v12h4m3-9 3 3-3 3m-6-3h9" />}
     {type === 'settings' && <><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" /><path d="M19 12a7.1 7.1 0 0 0-.1-1.1l2-1.5-2-3.5-2.4 1a7.6 7.6 0 0 0-1.9-1.1L14.3 3h-4.6l-.3 2.8a7.6 7.6 0 0 0-1.9 1.1l-2.4-1-2 3.5 2 1.5A7.1 7.1 0 0 0 5 12c0 .4 0 .8.1 1.1l-2 1.5 2 3.5 2.4-1a7.6 7.6 0 0 0 1.9 1.1l.3 2.8h4.6l.3-2.8a7.6 7.6 0 0 0 1.9-1.1l2.4 1 2-3.5-2-1.5c.1-.3.1-.7.1-1.1Z" /></>}
   </svg>;
-}
-
-export class SectionErrorBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  retry = () => {
-    this.setState({ hasError: false });
-  };
-
-  render() {
-    if (this.state.hasError) {
-      return <section className="section-error glass" role="alert"><h2>Something went wrong</h2><p>Reload this section</p><button className="btn btn-secondary" onClick={this.retry} type="button">Retry</button></section>;
-    }
-    return this.props.children;
-  }
 }
 

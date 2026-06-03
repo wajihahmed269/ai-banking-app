@@ -1,7 +1,7 @@
 import { request } from './client';
 
 const AI_REQUEST_TIMEOUT_MS = 45000;
-const AI_FALLBACK_MESSAGE = 'AI response was empty. Please try one of the demo finance questions again.';
+const AI_FALLBACK_MESSAGE = 'AI service returned an empty response. Please try again later.';
 
 function normalizeAiResponse(result) {
   if (typeof result === 'string') {
@@ -30,6 +30,9 @@ export async function chat(username, message, timeoutMs = AI_REQUEST_TIMEOUT_MS)
   } catch (error) {
     if (error?.name === 'AbortError') {
       throw new Error('AI is taking too long to respond. Please try again.');
+    }
+    if (error instanceof TypeError) {
+      throw new Error('AI service is currently unavailable. Please try again later.');
     }
     throw error;
   } finally {

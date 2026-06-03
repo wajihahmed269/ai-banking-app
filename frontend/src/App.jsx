@@ -3,7 +3,6 @@ import './App.css';
 import { clearSession, getCurrentUser } from './auth/session';
 import * as bankingApi from './api/bankingApi';
 import * as aiApi from './api/aiApi';
-import { DEMO_MODE } from './config';
 import { profileImage, techStack, transactions, fundingSources, billers, watchlist, chromaToolItems, profileSettings, initialBalance, defaultAiMessages, welcomeAiMessages, initialNotificationItems } from './data/demoData';
 import { usePerformanceMode } from './hooks/usePerformanceMode';
 import { useToasts } from './hooks/useToasts';
@@ -23,7 +22,7 @@ import { RecentTransactions } from './components/dashboard/RecentTransactions';
 import { TransferView, TransactionsView } from './components/banking/TransferView';
 import { ReceiptModal } from './components/banking/ReceiptModal';
 import { formatUSD, parseMoneyValue } from './utils/money';
-import { buildReceipt, createPrototypeTransaction, getSessionUsername } from './utils/transactions';
+import { buildReceipt, getSessionUsername } from './utils/transactions';
 import { prefetchAboutChunks, prefetchDashboardChunks } from './utils/prefetch';
 
 const Prism = lazy(() => import('./components/backgrounds/Prism'));
@@ -66,9 +65,7 @@ export default function App() {
   const performance = usePerformanceMode();
   const {
     balance,
-    setBalance,
     recentTransactions,
-    setRecentTransactions,
     balanceLoading,
     transactionsLoading,
     balanceError,
@@ -235,41 +232,21 @@ export default function App() {
     setTransferError('');
     setTransferSuccess('');
     setTransferLoading(true);
-    if (!DEMO_MODE) {
-      try {
-        const transaction = await bankingApi.transfer(recipient, amount, note);
-        const nextReceipt = buildReceipt({ transaction, type: 'Transfer', amount, recipient, note });
-        setReceipt(nextReceipt);
-        setTransferSuccess(`Transfer successful. Reference ${nextReceipt.reference}`);
-        addToast({ type: 'success', title: 'Transfer completed', message: `${formatUSD(amount)} sent to ${recipient}.` });
-        setTransferForm({ recipient: '', amount: '', note: '' });
-        await refreshAccountData();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Transfer failed.';
-        setTransferError(message);
-        addToast({ type: 'error', title: 'Transfer failed', message });
-      } finally {
-        setTransferLoading(false);
-      }
-      return;
-    }
-    window.setTimeout(() => {
-      const transaction = createPrototypeTransaction({
-        name: `Transfer to ${recipient}`,
-        amount: -amount,
-        type: 'transfers',
-        recipient,
-        note,
-      });
-      setBalance((current) => current - amount);
-      setRecentTransactions((current) => [transaction, ...current]);
+    try {
+      const transaction = await bankingApi.transfer(recipient, amount, note);
       const nextReceipt = buildReceipt({ transaction, type: 'Transfer', amount, recipient, note });
       setReceipt(nextReceipt);
       setTransferSuccess(`Transfer successful. Reference ${nextReceipt.reference}`);
       addToast({ type: 'success', title: 'Transfer completed', message: `${formatUSD(amount)} sent to ${recipient}.` });
       setTransferForm({ recipient: '', amount: '', note: '' });
+      await refreshAccountData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Transfer failed.';
+      setTransferError(message);
+      addToast({ type: 'error', title: 'Transfer failed', message });
+    } finally {
       setTransferLoading(false);
-    }, 160);
+    }
   }, [addToast, balance, currentUser, refreshAccountData, setTransferForm, transferForm.amount, transferForm.note, transferForm.recipient]);
 
   const resetDemoView = useCallback(() => {
@@ -340,7 +317,7 @@ export default function App() {
   return <div className={`app-root ${performance.isLiteMode ? 'performance-lite' : 'performance-full'}`} data-performance-mode={performance.effectivePerformanceMode}>
     {view === 'landing' ? <LandingView openAuth={openAuth} performance={performance} updatePerformanceMode={updatePerformanceMode} /> : <DashboardView view={view} setView={setView} goLanding={goLanding} showBalance={showBalance} setShowBalance={setShowBalance} balance={balance} balanceLoading={balanceLoading} balanceError={balanceError} recentTransactions={recentTransactions} transactionsLoading={transactionsLoading} transactionsError={transactionsError} usingFallbackData={usingFallbackData} transactionSearch={transactionSearch} setTransactionSearch={setTransactionSearch} transactionFilter={transactionFilter} setTransactionFilter={setTransactionFilter} filteredTransactions={filteredTransactions} transferForm={transferForm} setTransferForm={setTransferForm} transferError={transferError} transferSuccess={transferSuccess} transferLoading={transferLoading} submitTransfer={submitTransfer} aiInput={aiInput} setAiInput={setAiInput} aiMessages={aiMessages} aiLoading={aiLoading} sendAiMessage={sendAiMessage} setQuickPanel={openQuickPanel} notificationOpen={notificationOpen} setNotificationOpen={setNotificationOpen} notificationItems={notificationItems} markAllNotificationsRead={markAllNotificationsRead} clearReadNotifications={clearReadNotifications} toggleNotificationRead={toggleNotificationRead} resetDemoView={resetDemoView} addToast={addToast} performance={performance} updatePerformanceMode={updatePerformanceMode} />}
     {isAuthOpen && <AuthModal authMode={authMode} setAuthMode={setAuthMode} closeAuth={closeAuth} enterDashboard={enterDashboard} addToast={addToast} />}
-    {quickPanel && <QuickPanel type={quickPanel} closePanel={closeQuickPanel} currentUser={currentUser} balance={balance} setBalance={setBalance} setRecentTransactions={setRecentTransactions} refreshAccountData={refreshAccountData} selectedFundingSource={selectedFundingSource} setSelectedFundingSource={setSelectedFundingSource} fundingMessage={fundingMessage} setFundingMessage={setFundingMessage} addMoneyStep={addMoneyStep} setAddMoneyStep={setAddMoneyStep} addMoneyAmount={addMoneyAmount} setAddMoneyAmount={setAddMoneyAmount} addMoneyNote={addMoneyNote} setAddMoneyNote={setAddMoneyNote} addMoneyError={addMoneyError} setAddMoneyError={setAddMoneyError} billCategory={billCategory} setBillCategory={setBillCategory} selectedBiller={selectedBiller} setSelectedBiller={setSelectedBiller} billMessage={billMessage} setBillMessage={setBillMessage} paymentConfirmOpen={paymentConfirmOpen} setPaymentConfirmOpen={setPaymentConfirmOpen} addToast={addToast} setReceipt={setReceipt} />}
+    {quickPanel && <QuickPanel type={quickPanel} closePanel={closeQuickPanel} currentUser={currentUser} balance={balance} refreshAccountData={refreshAccountData} selectedFundingSource={selectedFundingSource} setSelectedFundingSource={setSelectedFundingSource} fundingMessage={fundingMessage} setFundingMessage={setFundingMessage} addMoneyStep={addMoneyStep} setAddMoneyStep={setAddMoneyStep} addMoneyAmount={addMoneyAmount} setAddMoneyAmount={setAddMoneyAmount} addMoneyNote={addMoneyNote} setAddMoneyNote={setAddMoneyNote} addMoneyError={addMoneyError} setAddMoneyError={setAddMoneyError} billCategory={billCategory} setBillCategory={setBillCategory} selectedBiller={selectedBiller} setSelectedBiller={setSelectedBiller} billMessage={billMessage} setBillMessage={setBillMessage} paymentConfirmOpen={paymentConfirmOpen} setPaymentConfirmOpen={setPaymentConfirmOpen} addToast={addToast} setReceipt={setReceipt} />}
     <LiteModeSuggestionModal performance={performance} onSwitchLite={switchToLiteMode} enabled={view === 'landing'} />
     <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} onCopy={copyReceiptReference} />
     <ToastViewport toasts={toasts} onClose={removeToast} />
@@ -488,7 +465,7 @@ function MiniChart({ large = false }) {
   return <svg className={large ? 'market-chart large' : 'market-chart'} viewBox="0 0 320 120" fill="none" aria-hidden="true"><path d="M8 92 C48 72 64 88 96 54 C124 24 142 60 170 42 C202 20 218 78 250 50 C276 28 292 35 312 18" /><path d="M8 92 C48 72 64 88 96 54 C124 24 142 60 170 42 C202 20 218 78 250 50 C276 28 292 35 312 18 L312 116 L8 116 Z" /></svg>;
 }
 
-function QuickPanel({ type, closePanel, currentUser, balance, setBalance, setRecentTransactions, refreshAccountData, selectedFundingSource, setSelectedFundingSource, fundingMessage, setFundingMessage, addMoneyStep, setAddMoneyStep, addMoneyAmount, setAddMoneyAmount, addMoneyNote, setAddMoneyNote, addMoneyError, setAddMoneyError, billCategory, setBillCategory, selectedBiller, setSelectedBiller, billMessage, setBillMessage, paymentConfirmOpen, setPaymentConfirmOpen, addToast, setReceipt }) {
+function QuickPanel({ type, closePanel, currentUser, balance, refreshAccountData, selectedFundingSource, setSelectedFundingSource, fundingMessage, setFundingMessage, addMoneyStep, setAddMoneyStep, addMoneyAmount, setAddMoneyAmount, addMoneyNote, setAddMoneyNote, addMoneyError, setAddMoneyError, billCategory, setBillCategory, selectedBiller, setSelectedBiller, billMessage, setBillMessage, paymentConfirmOpen, setPaymentConfirmOpen, addToast, setReceipt }) {
   const visibleBillers = useMemo(() => billers.filter((biller) => billCategory === 'All' || biller[1] === billCategory), [billCategory]);
   const selectedBill = useMemo(() => billers.find(([name]) => name === selectedBiller), [selectedBiller]);
   const selectedBillAmount = selectedBill ? parseMoneyValue(selectedBill[2]) : null;
@@ -520,42 +497,23 @@ function QuickPanel({ type, closePanel, currentUser, balance, setBalance, setRec
     setAddMoneyError('');
     setFundingMessage('');
     setPanelLoading(true);
-    if (!DEMO_MODE) {
-      try {
-        const transaction = await bankingApi.deposit(amount, selectedFundingSource, note);
-        const nextReceipt = buildReceipt({ transaction, type: 'Deposit', amount, note, category: selectedFundingSource });
-        setReceipt(nextReceipt);
-        setFundingMessage(`Deposit successful from ${selectedFundingSource}.`);
-        setAddMoneyAmount('');
-        setAddMoneyNote('');
-        addToast({ type: 'success', title: 'Deposit successful', message: `${formatUSD(amount)} added to your balance. Ref ${nextReceipt.reference}.` });
-        await refreshAccountData();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Deposit failed.';
-        setAddMoneyError(message);
-        addToast({ type: 'error', title: 'Deposit failed', message });
-      } finally {
-        setPanelLoading(false);
-      }
-      return;
-    }
-    window.setTimeout(() => {
-      const transaction = createPrototypeTransaction({
-        name: `Deposit from ${selectedFundingSource}`,
-        amount,
-        type: 'income',
-        category: selectedFundingSource,
-        note,
-      });
-      setBalance((current) => current + amount);
-      setRecentTransactions((current) => [transaction, ...current]);
+    try {
+      const transaction = await bankingApi.deposit(amount, selectedFundingSource, note);
+      const nextReceipt = buildReceipt({ transaction, type: 'Deposit', amount, note, category: selectedFundingSource });
+      setReceipt(nextReceipt);
       setFundingMessage(`Deposit successful from ${selectedFundingSource}.`);
       setAddMoneyAmount('');
       setAddMoneyNote('');
-      addToast({ type: 'success', title: 'Deposit successful', message: `${formatUSD(amount)} added to your balance. Ref ${transaction.reference}.` });
+      addToast({ type: 'success', title: 'Deposit successful', message: `${formatUSD(amount)} added to your balance. Ref ${nextReceipt.reference}.` });
+      await refreshAccountData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Deposit failed.';
+      setAddMoneyError(message);
+      addToast({ type: 'error', title: 'Deposit failed', message });
+    } finally {
       setPanelLoading(false);
-    }, 160);
-  }, [addMoneyAmount, addMoneyNote, addToast, currentUser, refreshAccountData, selectedFundingSource, setAddMoneyAmount, setAddMoneyError, setAddMoneyNote, setBalance, setFundingMessage, setReceipt, setRecentTransactions]);
+    }
+  }, [addMoneyAmount, addMoneyNote, addToast, currentUser, refreshAccountData, selectedFundingSource, setAddMoneyAmount, setAddMoneyError, setAddMoneyNote, setFundingMessage, setReceipt]);
 
   const openPaymentConfirmation = useCallback(() => {
     if (!selectedBill) {
@@ -563,7 +521,7 @@ function QuickPanel({ type, closePanel, currentUser, balance, setBalance, setRec
       return;
     }
     if (selectedBillAmount === null) {
-      setBillMessage('This prototype biller needs a dollar amount before payment.');
+      setBillMessage('This biller needs a dollar amount before payment.');
       return;
     }
     setBillMessage('');
@@ -589,57 +547,35 @@ function QuickPanel({ type, closePanel, currentUser, balance, setBalance, setRec
 
     setPanelLoading(true);
     setBillMessage('');
-    if (!DEMO_MODE) {
-      try {
-        const transaction = await bankingApi.payBill({
-          biller: selectedBill[0],
-          amount: selectedBillAmount,
-          category: selectedBill[1],
-          paymentMethod: 'Bank Balance',
-          note: `${selectedBill[0]} bill payment`,
-        });
-        const nextReceipt = buildReceipt({ transaction, type: 'Payment', amount: selectedBillAmount, biller: selectedBill[0], category: selectedBill[1], paymentMethod: 'Bank Balance', note: `${selectedBill[0]} bill payment` });
-        setReceipt(nextReceipt);
-        setBillMessage(`${selectedBill[0]} paid successfully.`);
-        addToast({ type: 'success', title: 'Payment completed', message: `${selectedBill[0]} paid successfully.` });
-        setPaymentConfirmOpen(false);
-        await refreshAccountData();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Payment failed.';
-        setBillMessage(message);
-        addToast({ type: 'error', title: 'Payment failed', message });
-        setPaymentConfirmOpen(false);
-      } finally {
-        setPanelLoading(false);
-      }
-      return;
-    }
-    window.setTimeout(() => {
-      const transaction = createPrototypeTransaction({
-        name: `${selectedBill[0]} bill payment`,
-        amount: -selectedBillAmount,
-        type: 'spending',
+    try {
+      const transaction = await bankingApi.payBill({
         biller: selectedBill[0],
+        amount: selectedBillAmount,
         category: selectedBill[1],
         paymentMethod: 'Bank Balance',
         note: `${selectedBill[0]} bill payment`,
       });
-      setBalance((current) => current - selectedBillAmount);
-      setRecentTransactions((current) => [transaction, ...current]);
       const nextReceipt = buildReceipt({ transaction, type: 'Payment', amount: selectedBillAmount, biller: selectedBill[0], category: selectedBill[1], paymentMethod: 'Bank Balance', note: `${selectedBill[0]} bill payment` });
       setReceipt(nextReceipt);
       setBillMessage(`${selectedBill[0]} paid successfully.`);
       addToast({ type: 'success', title: 'Payment completed', message: `${selectedBill[0]} paid successfully.` });
       setPaymentConfirmOpen(false);
+      await refreshAccountData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Payment failed.';
+      setBillMessage(message);
+      addToast({ type: 'error', title: 'Payment failed', message });
+      setPaymentConfirmOpen(false);
+    } finally {
       setPanelLoading(false);
-    }, 160);
-  }, [addToast, balance, currentUser, refreshAccountData, selectedBill, selectedBillAmount, setBalance, setBillMessage, setPaymentConfirmOpen, setReceipt, setRecentTransactions]);
+    }
+  }, [addToast, balance, currentUser, refreshAccountData, selectedBill, selectedBillAmount, setBillMessage, setPaymentConfirmOpen, setReceipt]);
 
-  return <div className="quick-panel-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !panelLoading) closePanel(); }}><section className="quick-panel glass"><button className="auth-close" onClick={closePanel} disabled={panelLoading} type="button" aria-label="Close panel">x</button><div className="panel-hero"><p>Prototype panel</p><h2>{title}</h2><span>{subtitle}</span></div>{type === 'addMoney' && <><div className="step-indicator"><span className={addMoneyStep === 'source' ? 'active' : ''}>1 Source</span><span className={addMoneyStep === 'details' ? 'active' : ''}>2 Amount</span></div>{addMoneyStep === 'source' ? <><div className="option-grid">{fundingSources.map(([name, description, icon]) => <button className={selectedFundingSource === name ? 'option-card selected' : 'option-card'} key={name} onClick={() => { setSelectedFundingSource(name); setFundingMessage(''); setAddMoneyError(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{description}</small></button>)}</div><button className="btn btn-primary full-width panel-action" disabled={!selectedFundingSource} onClick={continueAddMoney} type="button">Continue</button></> : <><div className="add-money-details"><h3>Add from {selectedFundingSource}</h3><p>Enter the amount you want to add to your Zephyr balance.</p><label>Amount<input value={addMoneyAmount} onChange={(event) => { setAddMoneyAmount(event.target.value); setAddMoneyError(''); }} inputMode="decimal" placeholder="0.00" disabled={panelLoading} /></label><label>Optional note/reference<textarea value={addMoneyNote} onChange={(event) => setAddMoneyNote(event.target.value)} placeholder="Reference note" disabled={panelLoading} /></label></div>{addMoneyError && <p className="panel-message error">{addMoneyError}</p>}{fundingMessage && <p className="panel-message">{fundingMessage}</p>}<div className="panel-actions split"><button className="btn btn-secondary" disabled={panelLoading} onClick={() => { setAddMoneyStep('source'); setAddMoneyError(''); setFundingMessage(''); }} type="button">Back</button><button className="btn btn-primary" disabled={panelLoading} onClick={confirmAddMoney} type="button">{panelLoading ? 'Depositing...' : 'Confirm Add Money'}</button></div></>}</>}{type === 'payBills' && <><div className="filter-tabs panel-filters">{['All', 'Subscriptions', 'Shopping', 'Cloud', 'Crypto', 'Utilities'].map((category) => <button className={billCategory === category ? 'active' : ''} key={category} onClick={() => { setBillCategory(category); setSelectedBiller(''); setBillMessage(''); setPaymentConfirmOpen(false); }} type="button">{category}</button>)}</div><div className="biller-grid">{visibleBillers.map(([name, category, amount, icon]) => <button className={selectedBiller === name ? 'biller-card selected' : 'biller-card'} key={name} onClick={() => { setSelectedBiller(name); setBillMessage(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{category}</small><b>{amount}</b></button>)}</div>{billMessage && <p className={billMessage.includes('successfully') ? 'panel-message' : 'panel-message error'}>{billMessage}</p>}<button className="btn btn-primary full-width panel-action" disabled={panelLoading} onClick={openPaymentConfirmation} type="button">{panelLoading ? 'Paying...' : 'Pay Selected'}</button>{paymentConfirmOpen && selectedBill && <PaymentConfirmModal billerName={selectedBill[0]} amount={selectedBillAmount} loading={panelLoading} onCancel={() => setPaymentConfirmOpen(false)} onConfirm={confirmPayment} />}</>}{type === 'investment' && <><div className="investment-panel-summary"><strong>$12,840.22</strong><span>+2.4% today</span></div><MiniChart large /><div className="watchlist-rows">{watchlist.map(([symbol, change]) => <div key={symbol}><span>{symbol}</span><b className={change.startsWith('+') ? 'positive' : 'negative'}>{change}</b><button disabled type="button">Prototype</button></div>)}</div><p className="panel-message">Market data is mocked in this UI sandbox.</p></>}</section></div>;
+  return <div className="quick-panel-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !panelLoading) closePanel(); }}><section className="quick-panel glass"><button className="auth-close" onClick={closePanel} disabled={panelLoading} type="button" aria-label="Close panel">x</button><div className="panel-hero"><p>Account action</p><h2>{title}</h2><span>{subtitle}</span></div>{type === 'addMoney' && <><div className="step-indicator"><span className={addMoneyStep === 'source' ? 'active' : ''}>1 Source</span><span className={addMoneyStep === 'details' ? 'active' : ''}>2 Amount</span></div>{addMoneyStep === 'source' ? <><div className="option-grid">{fundingSources.map(([name, description, icon]) => <button className={selectedFundingSource === name ? 'option-card selected' : 'option-card'} key={name} onClick={() => { setSelectedFundingSource(name); setFundingMessage(''); setAddMoneyError(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{description}</small></button>)}</div><button className="btn btn-primary full-width panel-action" disabled={!selectedFundingSource} onClick={continueAddMoney} type="button">Continue</button></> : <><div className="add-money-details"><h3>Add from {selectedFundingSource}</h3><p>Enter the amount you want to add to your Zephyr balance.</p><label>Amount<input value={addMoneyAmount} onChange={(event) => { setAddMoneyAmount(event.target.value); setAddMoneyError(''); }} inputMode="decimal" placeholder="0.00" disabled={panelLoading} /></label><label>Optional note/reference<textarea value={addMoneyNote} onChange={(event) => setAddMoneyNote(event.target.value)} placeholder="Reference note" disabled={panelLoading} /></label></div>{addMoneyError && <p className="panel-message error">{addMoneyError}</p>}{fundingMessage && <p className="panel-message">{fundingMessage}</p>}<div className="panel-actions split"><button className="btn btn-secondary" disabled={panelLoading} onClick={() => { setAddMoneyStep('source'); setAddMoneyError(''); setFundingMessage(''); }} type="button">Back</button><button className="btn btn-primary" disabled={panelLoading} onClick={confirmAddMoney} type="button">{panelLoading ? 'Depositing...' : 'Confirm Add Money'}</button></div></>}</>}{type === 'payBills' && <><div className="filter-tabs panel-filters">{['All', 'Subscriptions', 'Shopping', 'Cloud', 'Crypto', 'Utilities'].map((category) => <button className={billCategory === category ? 'active' : ''} key={category} onClick={() => { setBillCategory(category); setSelectedBiller(''); setBillMessage(''); setPaymentConfirmOpen(false); }} type="button">{category}</button>)}</div><div className="biller-grid">{visibleBillers.map(([name, category, amount, icon]) => <button className={selectedBiller === name ? 'biller-card selected' : 'biller-card'} key={name} onClick={() => { setSelectedBiller(name); setBillMessage(''); }} type="button"><span><MiniIcon type={icon} /></span><strong>{name}</strong><small>{category}</small><b>{amount}</b></button>)}</div>{billMessage && <p className={billMessage.includes('successfully') ? 'panel-message' : 'panel-message error'}>{billMessage}</p>}<button className="btn btn-primary full-width panel-action" disabled={panelLoading} onClick={openPaymentConfirmation} type="button">{panelLoading ? 'Paying...' : 'Pay Selected'}</button>{paymentConfirmOpen && selectedBill && <PaymentConfirmModal billerName={selectedBill[0]} amount={selectedBillAmount} loading={panelLoading} onCancel={() => setPaymentConfirmOpen(false)} onConfirm={confirmPayment} />}</>}{type === 'investment' && <><div className="investment-panel-summary"><strong>$12,840.22</strong><span>+2.4% today</span></div><MiniChart large /><div className="watchlist-rows">{watchlist.map(([symbol, change]) => <div key={symbol}><span>{symbol}</span><b className={change.startsWith('+') ? 'positive' : 'negative'}>{change}</b><button disabled type="button">Prototype</button></div>)}</div><p className="panel-message">Market data is mocked in this UI sandbox.</p></>}</section></div>;
 }
 
 function PaymentConfirmModal({ billerName, amount, loading, onCancel, onConfirm }) {
-  return <div className="payment-confirm-layer" role="presentation"><section className="payment-confirm-modal glass" role="dialog" aria-modal="true" aria-labelledby="payment-confirm-title"><h2 id="payment-confirm-title">Confirm payment</h2><p>You are about to pay {billerName}.</p><strong>{formatUSD(amount)}</strong><span>This prototype payment updates local dashboard state.</span><div className="panel-actions"><button className="btn btn-secondary" disabled={loading} onClick={onCancel} type="button">Cancel</button><button className="btn btn-primary" disabled={loading} onClick={onConfirm} type="button">{loading ? 'Confirming...' : 'Confirm Payment'}</button></div></section></div>;
+  return <div className="payment-confirm-layer" role="presentation"><section className="payment-confirm-modal glass" role="dialog" aria-modal="true" aria-labelledby="payment-confirm-title"><h2 id="payment-confirm-title">Confirm payment</h2><p>You are about to pay {billerName}.</p><strong>{formatUSD(amount)}</strong><span>This payment posts to your authenticated Zephyr account.</span><div className="panel-actions"><button className="btn btn-secondary" disabled={loading} onClick={onCancel} type="button">Cancel</button><button className="btn btn-primary" disabled={loading} onClick={onConfirm} type="button">{loading ? 'Confirming...' : 'Confirm Payment'}</button></div></section></div>;
 }
 
 function AnalyticsView() {
@@ -673,7 +609,7 @@ function PerformanceModeControl({ performance, updatePerformanceMode }) {
 }
 
 function ProfileView({ resetDemoView, performance, updatePerformanceMode }) {
-  return <main className="dashboard-shell single profile-shell"><PageHeader title="Profile & Settings" /><PerformanceModeControl performance={performance} updatePerformanceMode={updatePerformanceMode} /><section className="profile-actions glass"><div><h2>Demo controls</h2><p>Reset local presentation state without changing prototype account data.</p></div><button className="btn btn-secondary" onClick={resetDemoView} type="button">Reset demo view</button></section><SectionErrorBoundary><Suspense fallback={<ProfileSkeleton />}><section className="profile-layout"><ReflectiveCard image={profileImage} name="Wajih Ahmed" role="DevOps Engineer" handle="@wajihahmed269" status="Building Zephyr" project="Phoenix-Ops / Zephyr" github="https://github.com/wajihahmed269" /><MagicBento items={profileSettings} className="profile-bento" /></section></Suspense></SectionErrorBoundary></main>;
+  return <main className="dashboard-shell single profile-shell"><PageHeader title="Profile & Settings" /><PerformanceModeControl performance={performance} updatePerformanceMode={updatePerformanceMode} /><section className="profile-actions glass"><div><h2>Demo controls</h2><p>Reset local presentation state without changing account data.</p></div><button className="btn btn-secondary" onClick={resetDemoView} type="button">Reset demo view</button></section><SectionErrorBoundary><Suspense fallback={<ProfileSkeleton />}><section className="profile-layout"><ReflectiveCard image={profileImage} name="Wajih Ahmed" role="DevOps Engineer" handle="@wajihahmed269" status="Building Zephyr" project="Phoenix-Ops / Zephyr" github="https://github.com/wajihahmed269" /><MagicBento items={profileSettings} className="profile-bento" /></section></Suspense></SectionErrorBoundary></main>;
 }
 
 function PageHeader({ title }) {

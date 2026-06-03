@@ -1,7 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getBalance, getTransactions } from '../api/bankingApi';
-import { initialBalance, transactions } from '../data/demoData';
-import { DEMO_MODE } from '../config';
 import { getSessionUsername, normalizeApiTransaction } from '../utils/transactions';
 
 export function useAccountData(currentUser) {
@@ -12,7 +10,7 @@ export function useAccountData(currentUser) {
   const [balanceError, setBalanceError] = useState('');
   const [transactionsError, setTransactionsError] = useState('');
   const [usingFallbackData, setUsingFallbackData] = useState(false);
-  const [demoDataLoadedFor, setDemoDataLoadedFor] = useState('');
+  const lastUsernameRef = useRef('');
 
   const resetAccountData = useCallback(() => {
     setBalance(0);
@@ -20,8 +18,14 @@ export function useAccountData(currentUser) {
     setBalanceError('');
     setTransactionsError('');
     setUsingFallbackData(false);
-    setDemoDataLoadedFor('');
   }, []);
+
+  useEffect(() => {
+    const username = getSessionUsername(currentUser);
+    if (lastUsernameRef.current === username) return;
+    lastUsernameRef.current = username;
+    resetAccountData();
+  }, [currentUser, resetAccountData]);
 
   const refreshAccountData = useCallback(async () => {
     const username = getSessionUsername(currentUser);
@@ -32,25 +36,6 @@ export function useAccountData(currentUser) {
     setBalanceError('');
     setTransactionsError('');
     setUsingFallbackData(false);
-
-    if (DEMO_MODE) {
-      if (demoDataLoadedFor === username) {
-        setUsingFallbackData(true);
-        setBalanceLoading(false);
-        setTransactionsLoading(false);
-        return;
-      }
-
-      window.setTimeout(() => {
-        setBalance(initialBalance);
-        setRecentTransactions(transactions);
-        setDemoDataLoadedFor(username);
-        setUsingFallbackData(true);
-        setBalanceLoading(false);
-        setTransactionsLoading(false);
-      }, 120);
-      return;
-    }
 
     try {
       const nextBalance = await getBalance();
@@ -71,13 +56,11 @@ export function useAccountData(currentUser) {
     } finally {
       setTransactionsLoading(false);
     }
-  }, [currentUser, demoDataLoadedFor]);
+  }, [currentUser]);
 
   return {
     balance,
-    setBalance,
     recentTransactions,
-    setRecentTransactions,
     balanceLoading,
     transactionsLoading,
     balanceError,

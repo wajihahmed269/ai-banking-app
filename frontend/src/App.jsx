@@ -2,6 +2,7 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState
 import './App.css';
 import { clearSession, getCurrentUser } from './auth/session';
 import * as bankingApi from './api/bankingApi';
+import * as aiApi from './api/aiApi';
 import { DEMO_MODE } from './config';
 import { profileImage, techStack, transactions, fundingSources, billers, watchlist, chromaToolItems, profileSettings, initialBalance, defaultAiMessages, welcomeAiMessages, initialNotificationItems } from './data/demoData';
 import { usePerformanceMode } from './hooks/usePerformanceMode';
@@ -21,7 +22,7 @@ import { QuickActions } from './components/dashboard/QuickActions';
 import { RecentTransactions } from './components/dashboard/RecentTransactions';
 import { TransferView, TransactionsView } from './components/banking/TransferView';
 import { ReceiptModal } from './components/banking/ReceiptModal';
-import { formatMoney, formatUSD, parseMoneyValue } from './utils/money';
+import { formatUSD, parseMoneyValue } from './utils/money';
 import { buildReceipt, createPrototypeTransaction, getSessionUsername } from './utils/transactions';
 import { prefetchAboutChunks, prefetchDashboardChunks } from './utils/prefetch';
 
@@ -178,30 +179,30 @@ export default function App() {
   const sendAiMessage = useCallback(async (event) => {
     event.preventDefault();
     const text = aiInput.trim();
-    if (!text) return;
+    if (!text || aiLoading) return;
+
     const username = getSessionUsername(currentUser);
     if (!username) {
       setAiMessages((current) => [...current, { role: 'user', text }, { role: 'assistant', text: 'Sign in before using the live AI assistant.', error: true }]);
       setAiInput('');
       return;
     }
+
     setAiMessages((current) => [...current, { role: 'user', text }]);
     setAiInput('');
     setAiLoading(true);
+
     try {
-      const summary = recentTransactions.slice(0, 3).map((transaction) => `${transaction.name} ${formatMoney(transaction.amount)}`).join(', ');
-      const response = summary
-        ? `Prototype summary: recent activity includes ${summary}.`
-        : 'Prototype summary: no recent account activity is loaded yet.';
+      const response = await aiApi.chat(username, text);
       setAiMessages((current) => [...current, { role: 'assistant', text: response }]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'AI failed. Please try again.';
+      const message = error instanceof Error ? error.message : 'AI service is currently unavailable. Please try again later.';
       setAiMessages((current) => [...current, { role: 'assistant', text: message, error: true }]);
       addToast({ type: 'error', title: 'AI assistant failed', message });
     } finally {
       setAiLoading(false);
     }
-  }, [addToast, aiInput, currentUser, recentTransactions]);
+  }, [addToast, aiInput, aiLoading, currentUser]);
 
   const submitTransfer = useCallback(async (event) => {
     event.preventDefault();

@@ -68,12 +68,17 @@ public class AIService {
         }
 
         context.append("User question: ").append(userMessage);
-        context.append(" Answer briefly in 2-3 sentences. If the question is about app support, explain the relevant Zephyr feature and common failure reasons.");
+        context.append(" Answer in exactly 2 short sentences. Do not use headings, bullet points, or numbered lists. If the question is about app support, mention the relevant Zephyr feature and one common failure reason.");
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", ollamaModel);
         requestBody.put("prompt", context.toString());
         requestBody.put("stream", false);
+        requestBody.put("options", Map.of(
+                "num_predict", 90,
+                "temperature", 0.2,
+                "top_p", 0.9
+        ));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

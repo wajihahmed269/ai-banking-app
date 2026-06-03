@@ -30,7 +30,7 @@ public class Notification {
     @Column(nullable = false, length = 40)
     private String type;
 
-    @Column(nullable = false)
+    @Column(name = "read_flag", nullable = false)
     private boolean read;
 
     @Column(nullable = false)
